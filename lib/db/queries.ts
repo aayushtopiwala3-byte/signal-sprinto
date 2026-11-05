@@ -47,6 +47,7 @@ export type CompanyRow = {
   missing_fields_json: string | null;
   error: string | null;
   created_at: string;
+  claimed_at: string | null;
 };
 
 const parse = <T>(json: string | null, fallback: T): T => {
@@ -125,13 +126,30 @@ export async function insertCompany(input: {
  * Claim exactly one pending company (§7.2). The UPDATE…RETURNING is atomic, so two concurrent
  * step calls can never process the same domain twice.
  */
+/**
+ * A company whose invocation was killed stays 'running' with no process behind it. Anything
+ * claimed longer ago than one handler can legally live (maxDuration = 60s) is abandoned rather
+ * than in flight, so a later request may take it. Pending work is claimed first, so a retry
+ * never queue-jumps a domain that has not been attempted at all.
+ */
+export const STALE_CLAIM_SECONDS = 90;
+
 export async function claimNextPending(runId: string): Promise<CompanyRow | null> {
   const rows = await sql<CompanyRow>`
-    UPDATE companies SET status = 'running', stage = 'fetching'
+    UPDATE companies SET status = 'running', stage = 'fetching', claimed_at = now()
     WHERE id = (
       SELECT id FROM companies
-      WHERE run_id = ${runId} AND status = 'pending'
-      ORDER BY created_at ASC LIMIT 1
+      WHERE run_id = ${runId}
+        AND (
+          status = 'pending'
+          OR (
+            status = 'running'
+            AND claimed_at IS NOT NULL
+            AND claimed_at < now() - make_interval(secs => ${STALE_CLAIM_SECONDS})
+          )
+        )
+      ORDER BY (status = 'running') ASC, created_at ASC
+      LIMIT 1
     )
     RETURNING *`;
   return rows[0] ?? null;

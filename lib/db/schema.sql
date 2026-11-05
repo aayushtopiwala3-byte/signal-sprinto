@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS companies (
   error                     TEXT,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- When a serverless invocation dies mid-company — Vercel killed one on a slow site — the row
+-- is left at status 'running' and nothing reclaims it, so the board spins on it forever.
+-- `claimed_at` is what lets a later request tell "in progress" from "abandoned".
+-- Added by ALTER rather than in the CREATE above so databases created before this still get it.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS companies_run_idx ON companies (run_id);
 CREATE UNIQUE INDEX IF NOT EXISTS companies_run_domain_idx
   ON companies (run_id, normalized_domain);

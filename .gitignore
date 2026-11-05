@@ -7,8 +7,10 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 
+# `.env*` is appended by `vercel link`; the negation must stay after it to keep working.
 .env
 .env.*
+.env*
 !.env.example
 
 # Course material that happened to be in this directory. The repo is public and these are

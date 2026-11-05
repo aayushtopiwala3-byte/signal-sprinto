@@ -218,3 +218,26 @@ misread again, and `remaining` is taken from Hunter's own figure. The 80% guard 
 computing `used / limit`, so it was never wrong — only the display was, which is the more
 dangerous of the two: §15 asks for credits consumed and remaining to be reported, and the page
 would have supplied a confident wrong number.
+
+### D-25 · A killed invocation leaves a claim, not a result [§7.2, §13]
+The first production run stranded `apty.io`. Vercel ended the invocation with
+`FUNCTION_INVOCATION_TIMEOUT` partway through the agent loop, the row stayed at status
+`running`, and the board spun on it with no process behind it. Two defects had to line up for
+that to be permanent, and both are fixed:
+
+`claimNextPending` only ever considered `status = 'pending'`, so a row orphaned by a dead
+handler was unreachable forever. It now also takes a `running` row whose `claimed_at` is older
+than `STALE_CLAIM_SECONDS` (90s) — longer than any handler may live, since `maxDuration` is 60 —
+and orders `pending` ahead of stale retries so a reattempt never queue-jumps a domain nobody has
+tried yet. The alternative, a heartbeat column updated during the loop, buys finer granularity
+than one domain per request can use.
+
+`/api/run/step` then compounded it: when nothing was claimable it returned `done: true,
+remaining: 0`, which is a different statement from the one it had evidence for. A company held
+by a live invocation is unavailable but unfinished. It now asks `countPending` and only reports
+done — and only calls `finishRun` — when the count is actually zero.
+
+Recorded because it is the one class of bug the local suite structurally cannot reach: PGlite
+runs in-process and is never killed mid-transaction, so "the handler dies" is not a state it can
+enter. `tests/claim.test.ts` reproduces the *consequence* by backdating `claimed_at`, which is
+the closest a single-process test can get.

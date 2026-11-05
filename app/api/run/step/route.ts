@@ -26,8 +26,12 @@ export async function POST(request: Request) {
 
   const claimed = await q.claimNextPending(runId);
   if (!claimed) {
-    await q.finishRun(runId);
-    return NextResponse.json({ done: true, remaining: 0, result: null });
+    // Nothing claimable is not the same as nothing left: a company claimed by an invocation
+    // that is still within its 60s budget is unavailable but unfinished. Reporting `done` here
+    // would strand it on the board forever, which is exactly what a killed handler once did.
+    const remaining = await q.countPending(runId);
+    if (remaining === 0) await q.finishRun(runId);
+    return NextResponse.json({ done: remaining === 0, remaining, result: null });
   }
 
   // runCompany catches its own failures and marks the company, so one dead domain cannot
