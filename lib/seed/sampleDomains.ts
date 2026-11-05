@@ -24,5 +24,9 @@ export const SAMPLE_TEXT = SAMPLE_DOMAINS.join("\n");
 export const SAMPLE_NOTES = [
   "3 entries collapse to rocketlane.com — one company, one Hunter credit",
   "sprinto-test-does-not-exist-9x.com cannot resolve — quarantined, run continues",
-  "zomato.com is not B2B SaaS — dropped on R-01",
+  // Written when zomato was expected to reach the rules engine and fail R-01. It never gets
+  // that far: zomato.com/robots.txt answers 403, so the gate stops it before any page is read.
+  // The note now says what actually happens, because a line claiming a rule fired when it did
+  // not is the same fabrication §1 forbids, just aimed at the reader instead of the board.
+  "zomato.com blocks crawlers — robots.txt returns 403, so it is quarantined before any fetch",
 ];
