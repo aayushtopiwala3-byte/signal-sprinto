@@ -62,6 +62,13 @@ describe("claimNextPending · an abandoned claim is not a finished one", () => {
     expect(reclaimed?.id).toBe(companyId);
   });
 
+  it("reclaims a running row that never recorded a claim time at all", async () => {
+    // Rows left running by the build that predates `claimed_at` have no timestamp to age out.
+    // The first version of this fix required a non-null one and so could not rescue them.
+    await sql`UPDATE companies SET status = 'running', claimed_at = NULL WHERE id = ${companyId}`;
+    expect((await q.claimNextPending(runId))?.id).toBe(companyId);
+  });
+
   it("reports nothing outstanding once the company reaches a terminal state", async () => {
     await q.quarantineCompany(companyId);
     expect(await q.countPending(runId)).toBe(0);

@@ -131,6 +131,11 @@ export async function insertCompany(input: {
  * claimed longer ago than one handler can legally live (maxDuration = 60s) is abandoned rather
  * than in flight, so a later request may take it. Pending work is claimed first, so a retry
  * never queue-jumps a domain that has not been attempted at all.
+ *
+ * A null `claimed_at` counts as abandoned too. This is the only code that sets status 'running',
+ * and it always stamps the time, so a running row without one was claimed before the column
+ * existed — a real run was stuck exactly this way. Requiring a non-null timestamp would have
+ * left those rows permanently unreachable by the very query written to rescue them.
  */
 export const STALE_CLAIM_SECONDS = 90;
 
@@ -144,8 +149,10 @@ export async function claimNextPending(runId: string): Promise<CompanyRow | null
           status = 'pending'
           OR (
             status = 'running'
-            AND claimed_at IS NOT NULL
-            AND claimed_at < now() - make_interval(secs => ${STALE_CLAIM_SECONDS})
+            AND (
+              claimed_at IS NULL
+              OR claimed_at < now() - make_interval(secs => ${STALE_CLAIM_SECONDS})
+            )
           )
         )
       ORDER BY (status = 'running') ASC, created_at ASC
