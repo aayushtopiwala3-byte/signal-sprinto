@@ -241,3 +241,33 @@ Recorded because it is the one class of bug the local suite structurally cannot 
 runs in-process and is never killed mid-transaction, so "the handler dies" is not a state it can
 enter. `tests/claim.test.ts` reproduces the *consequence* by backdating `claimed_at`, which is
 the closest a single-process test can get.
+
+A second deploy was needed because the first fix did not reach the row it was written for. The
+reclaim condition required `claimed_at` to be non-null, and the stranded row was claimed before
+the column existed, so it aged out of nothing and stepping the run still returned
+`remaining: 1` with no claim. Adding a column mid-incident means the rows you are trying to
+rescue are exactly the ones that predate it. `claimNextPending` is the only writer of status
+`running` and always stamps the time, so a null is now read as abandoned.
+
+### D-26 · The handler watches its own clock, and the run is allowed to give up [§7.2, §12]
+Reclaiming a stranded row (D-25) fixed the symptom and exposed the cause: `apty.io` was reclaimed
+and then timed out again, because nothing in the pipeline knew how long it had. The agent loop
+could open four extra pages at up to 20s each, and each model call carries its own 30s timeout,
+so a slow site could spend the whole 60s budget before reaching a verdict.
+
+`runCompany` now measures elapsed time and stops opening new pages once only the tail's reserve
+remains (25s for scoring, Hunter and the two model calls), writing a `loop_trace` row with
+`chosen_by = 'deadline'` so the audit panel shows the clock as a reason the same way it shows
+AI-2's choices. If the budget is nearly gone by ⑨, pain points are skipped before the draft,
+because a draft without pain points is still useful and the reverse is not; a skipped draft says
+so in `blocked_reason` rather than appearing empty.
+
+This is the §1 rule applied to time rather than to evidence. A deadline reached means fields stay
+`not stated` and R-22 returns a HOLD naming them — the pipeline reports what it managed to read
+instead of guessing the rest.
+
+Separately, retries are capped at `MAX_CLAIM_ATTEMPTS = 3`. Reclaiming without a ceiling turns
+one stuck row into a board that retries forever, which is the original bug wearing a disguise: a
+site slow enough to outlast the budget once will do it again. The fourth claim quarantines the
+domain with reason code `handler_timeout`, so §12's page states plainly that this pipeline could
+not read it in the time one request is allowed — a reported limit rather than a hidden loop.

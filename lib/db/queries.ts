@@ -48,6 +48,7 @@ export type CompanyRow = {
   error: string | null;
   created_at: string;
   claimed_at: string | null;
+  attempts: number;
 };
 
 const parse = <T>(json: string | null, fallback: T): T => {
@@ -139,9 +140,18 @@ export async function insertCompany(input: {
  */
 export const STALE_CLAIM_SECONDS = 90;
 
+/**
+ * How many times one domain may be claimed before the run stops trying. Reclaiming is what keeps
+ * a killed handler from stranding a row; without a ceiling it would instead strand the whole
+ * board in a retry loop, since a site slow enough to outlast the budget once will do it again.
+ * Three attempts distinguishes a one-off timeout from a domain this pipeline cannot read.
+ */
+export const MAX_CLAIM_ATTEMPTS = 3;
+
 export async function claimNextPending(runId: string): Promise<CompanyRow | null> {
   const rows = await sql<CompanyRow>`
-    UPDATE companies SET status = 'running', stage = 'fetching', claimed_at = now()
+    UPDATE companies
+    SET status = 'running', stage = 'fetching', claimed_at = now(), attempts = attempts + 1
     WHERE id = (
       SELECT id FROM companies
       WHERE run_id = ${runId}

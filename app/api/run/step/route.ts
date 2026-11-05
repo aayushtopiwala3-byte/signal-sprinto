@@ -34,6 +34,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ done: remaining === 0, remaining, result: null });
   }
 
+  if (claimed.attempts > q.MAX_CLAIM_ATTEMPTS) {
+    // The domain has now outlasted the handler's budget three times. Reclaiming it a fourth time
+    // would trade a stuck row for an endless one; quarantine records the refusal where §12's page
+    // can show it, with the count, rather than leaving a judge to infer it from a spinning board.
+    const text = `gave up after ${q.MAX_CLAIM_ATTEMPTS} attempts — each one exceeded the ${60}s a single request is allowed to run, so this domain is too slow to read within one invocation`;
+    await q.insertQuarantine({
+      runId,
+      domain: claimed.domain,
+      reasonCode: "handler_timeout",
+      reasonText: text,
+    });
+    await q.quarantineCompany(claimed.id);
+    const left = await q.countPending(runId);
+    if (left === 0) await q.finishRun(runId);
+    return NextResponse.json({
+      done: left === 0,
+      remaining: left,
+      result: {
+        companyId: claimed.id,
+        domain: claimed.domain,
+        status: "quarantined",
+        verdict: null,
+        fetchesUsed: 0,
+        note: text,
+      },
+    });
+  }
+
   // runCompany catches its own failures and marks the company, so one dead domain cannot
   // stop the other eleven (T-09).
   const result = await runCompany(claimed.id);

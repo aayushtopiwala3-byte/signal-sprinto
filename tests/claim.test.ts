@@ -69,6 +69,21 @@ describe("claimNextPending · an abandoned claim is not a finished one", () => {
     expect((await q.claimNextPending(runId))?.id).toBe(companyId);
   });
 
+  it("counts every claim, so a domain that never finishes can be given up on", async () => {
+    const attempts = async () =>
+      (await sql<{ attempts: number }>`SELECT attempts FROM companies WHERE id = ${companyId}`)[0]
+        .attempts;
+
+    // Three successful claims so far: the first, the stale reclaim, and the null-claimed_at one.
+    // The refusals in between cost nothing, which is what makes the count mean "times tried".
+    expect(await attempts()).toBe(q.MAX_CLAIM_ATTEMPTS);
+
+    await backdateClaim(companyId, q.STALE_CLAIM_SECONDS + 30);
+    await q.claimNextPending(runId);
+    // Past the ceiling, so /api/run/step quarantines instead of handing it to runCompany again.
+    expect(await attempts()).toBeGreaterThan(q.MAX_CLAIM_ATTEMPTS);
+  });
+
   it("reports nothing outstanding once the company reaches a terminal state", async () => {
     await q.quarantineCompany(companyId);
     expect(await q.countPending(runId)).toBe(0);

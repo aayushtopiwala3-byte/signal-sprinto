@@ -29,6 +29,31 @@ import * as q from "@/lib/db/queries";
 export const RUN_BUDGET_USD = 1.0;
 
 /**
+ * Vercel kills the invocation at `maxDuration` and nothing after that point runs — a real run
+ * lost apty.io exactly that way, mid-loop, with no verdict and no trace of why. The handler
+ * therefore watches its own clock and stops opening new pages while enough time remains to
+ * score, look up a contact and write the draft.
+ *
+ * Stopping early costs evidence, and missing evidence is already a first-class outcome here:
+ * R-22 turns it into a HOLD that names the fields still `not stated`. A partial answer that says
+ * what it does not know beats a killed handler that says nothing.
+ */
+const HANDLER_BUDGET_MS = 55_000;
+/** Reserved for ⑦–⑩: Hunter plus the two remaining model calls. */
+const TAIL_RESERVE_MS = 25_000;
+/** Rough cost of one Gemini call, used to decide whether ⑨ and ⑩ still fit. */
+const AI_CALL_RESERVE_MS = 8_000;
+
+/** Exported for the test; `elapsed` is injected rather than read from the clock. */
+export function timeLeftMs(elapsedMs: number): number {
+  return HANDLER_BUDGET_MS - elapsedMs;
+}
+
+export function loopMayContinue(elapsedMs: number): boolean {
+  return timeLeftMs(elapsedMs) > TAIL_RESERVE_MS;
+}
+
+/**
  * The two verdict overrides that sit outside the rules engine because they depend on how the
  * run went rather than on what the pages said. Exported so `/api/rerank` applies exactly the
  * same ones when weights change, instead of a second implementation that could drift (T-22).
@@ -100,6 +125,9 @@ async function recordFetch(companyId: string, outcome: FetchOutcome): Promise<vo
 }
 
 export async function runCompany(companyId: string): Promise<RunCompanyResult> {
+  const startedAt = Date.now();
+  const elapsed = () => Date.now() - startedAt;
+
   const company = await q.getCompany(companyId);
   if (!company) throw new Error(`Company ${companyId} not found`);
 
@@ -188,6 +216,23 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
       if (!verdictOnContinuing.continue) break;
 
       const missing = verdictOnContinuing.missing;
+
+      if (!loopMayContinue(elapsed())) {
+        // Recorded rather than silent: the trace is the audit panel a reader uses to see how the
+        // loop decided, and "it ran out of time" is a decision they are entitled to see.
+        await q.insertLoopTrace({
+          companyId,
+          iteration,
+          emptyFields: missing,
+          chosenUrl: null,
+          chosenReason: `stopped after ${Math.round(elapsed() / 1000)}s — not enough of the handler's budget left to read another page and still finish scoring, so ${missing.join(", ")} stays ${NOT_STATED}`,
+          chosenBy: "deadline",
+          fetchOk: null,
+          fieldsFilled: null,
+        });
+        break;
+      }
+
       const choice = await chooseNextUrl({
         domain,
         emptyFields: missing,
@@ -384,7 +429,9 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
     const sources = pages.map((p) => ({ url: p.url, text: p.text }));
 
     let rawPoints: { text: string; quote: string | null; url: string | null }[] = [];
-    if (switches.ai_enabled) {
+    // Two model calls remain; if only one fits, the draft is the one worth keeping, since pain
+    // points without a draft help nobody and the validator drops unquoted ones anyway.
+    if (switches.ai_enabled && timeLeftMs(elapsed()) > 2 * AI_CALL_RESERVE_MS) {
       const painResult = await aiCall({
         callName: "AI-3 pain points",
         prompt: buildPainPointsPrompt({ domain, signals: result.fired_signals, pages: sources }),
@@ -418,6 +465,15 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         validated: false,
         blocked_reason:
           "No draft: the ai_enabled switch is off. Every verdict above was produced by rules alone, but writing prose is the one step that genuinely needs the model.",
+      });
+    } else if (timeLeftMs(elapsed()) <= AI_CALL_RESERVE_MS) {
+      await q.replaceDraft(companyId, {
+        subject: NOT_STATED,
+        body: NOT_STATED,
+        hook_quote: null,
+        hook_url: null,
+        validated: false,
+        blocked_reason: `No draft: this domain used ${Math.round(elapsed() / 1000)}s of the handler's budget on fetching, leaving no room to write one. The verdict and its evidence above are complete; re-running this company alone will produce the draft.`,
       });
     } else {
       const draftResult = await aiCall({

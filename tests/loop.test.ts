@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_EXTRA_FETCHES, emptyFields, shouldContinue } from "@/lib/pipeline/completeness";
 import { fallbackChoice } from "@/lib/pipeline/loop";
-import { applyHandoffRules } from "@/lib/pipeline/runCompany";
+import { applyHandoffRules, loopMayContinue, timeLeftMs } from "@/lib/pipeline/runCompany";
 import { computeVerdict } from "@/lib/rules/verdict";
 import { evidence, fittingEvidence, switches, weights } from "./helpers";
 
@@ -107,5 +107,22 @@ describe("T-12 · the loop never re-reads a page it has already read", () => {
     expect(choice.url).toBe("https://x.com/security");
     expect(choice.chosen_by).toBe("fallback");
     expect(choice.targetField).toBe("cert_status");
+  });
+});
+
+describe("the handler's own clock", () => {
+  it("keeps reading while the tail still fits", () => {
+    expect(loopMayContinue(0)).toBe(true);
+    expect(loopMayContinue(25_000)).toBe(true);
+  });
+
+  it("stops opening pages once only the tail's reserve is left", () => {
+    // 55s budget less a 25s reserve for scoring, Hunter and the two model calls.
+    expect(loopMayContinue(30_000)).toBe(false);
+    expect(loopMayContinue(54_000)).toBe(false);
+  });
+
+  it("reports time left as negative once the budget is blown, never wrapping positive", () => {
+    expect(timeLeftMs(60_000)).toBeLessThan(0);
   });
 });

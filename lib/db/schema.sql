@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS companies (
 -- `claimed_at` is what lets a later request tell "in progress" from "abandoned".
 -- Added by ALTER rather than in the CREATE above so databases created before this still get it.
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+-- Reclaiming alone would retry a domain that always outlasts the handler forever, which is the
+-- same stuck board by a slower route. Counting claims lets the run give up and say why.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS companies_run_idx ON companies (run_id);
 CREATE UNIQUE INDEX IF NOT EXISTS companies_run_domain_idx
