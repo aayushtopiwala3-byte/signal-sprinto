@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+build/
+.vercel
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+.env
+.env.*
+!.env.example
+
+# Course material that happened to be in this directory. The repo is public and these are
+# not mine to republish; the build spec (BUILD_PROMPT.md) is kept because the README refers to it.
+*.pdf
