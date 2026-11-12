@@ -164,7 +164,14 @@ Cost-ledger rates moved with it — 3.8 Flash bills $0.825/$4.125 per 1M input/o
 against 2.0 Flash's $0.10/$0.40, so leaving the old constants would have under-reported spend
 by roughly 8x on the ₹ figure the brief asks to be reported.
 
-### D-22 · T-20's missing Send is reported, not engineered away [§1, §7.3, T-20]
+### D-22 · T-20's missing Send is reported, not engineered away [§1, §7.3, T-20] — **withdrawn by D-27**
+*The entry below was wrong in its central claim and is kept only so the mistake is on the record.
+It asserted that six companies "genuinely do not publish a headcount on any page the loop could
+reach." They do. The loop could not reach it because `lib/fetch/clean.ts` was deleting the
+sentence — an 8-word block floor and a 2,000-token cap that between them removed whatfix's
+"crossing 500 employees globally" before AI-1 ever saw the page. I measured the absence from the
+cleaned text and reported it as a property of the web. See D-27.*
+
 The live 12-domain run produced 7 Holds and no Send. The reason was measured rather than
 assumed: `size_band` is still `not stated` for 6 of the 7 scored companies after all 4 extra
 fetches, so **R-22 hands off instead of sending**. `nected.ai` is the clearest case — timing
@@ -271,3 +278,96 @@ one stuck row into a board that retries forever, which is the original bug weari
 site slow enough to outlast the budget once will do it again. The fourth claim quarantines the
 domain with reason code `handler_timeout`, so §12's page states plainly that this pipeline could
 not read it in the time one request is allowed — a reported limit rather than a hidden loop.
+
+---
+
+## Phase 1 — the decision layer and the evidence hole [FIX_PROMPT §2]
+
+### D-27 · The cleaner was deciding which facts exist [§2.3, F-2, F-5, withdraws D-22]
+`lib/fetch/clean.ts` dropped any block under 8 words and then truncated the result at 2,000
+tokens. Both are reasonable cost controls and both were silently destroying the evidence the
+board depends on:
+
+- whatfix.com states *"crossing 500 employees globally"* at raw index 236,854 of 330,556 on
+  `/about-us` — 72% of the way through the page, well past the cap. v1 truncated it away and
+  then reported `not stated` as though the company had never said it.
+- A page that renders its headcount as a stat tile produces the block `| 500 Employees` — three
+  words, below the floor, deleted.
+
+The fix is narrow on purpose. A block is exempt from the word floor when it matches
+`HEADCOUNT_FACT` and is under 300 characters, and matching blocks that the cap removed are
+re-appended **verbatim** after truncation. Verbatim matters: a quote taken from a rescued block
+still has to verify against the live page, so paraphrasing or trimming it would convert a §1
+violation from "fabricated" to "unverifiable", which is not an improvement.
+
+The general lesson is the one D-22 missed. When a measurement says a fact is absent, the first
+question is whether the instrument can see it. I measured the cleaned text and reported a
+property of the web.
+
+### D-28 · Two of the four extra fetches are reserved, not pooled [§2.1, F-3, F-4]
+`MAX_EXTRA_FETCHES` is still 4 — the cap did not move, who spends it did. v1 let AI-2 choose all
+four, and AI-2 spent every one chasing `size_band`, never opening the security page. That page
+carries S-01, S-02 and S-03: the largest block of points on the board. The loop was structurally
+incapable of producing a Send because it never read the page where Send comes from.
+
+`lib/fetch/plan.ts` makes slots 0 and 1 reserved — security then careers — and leaves 2 and 3 to
+the model. Two consequences worth stating:
+
+- **A reserved slot runs even when the Evidence Map is already full.** Signals are not Evidence
+  Map fields, so "nothing is missing" is not a reason to skip the page where the signals live.
+- **The slot is spent whether or not it finds anything.** It asked its question. A company with
+  no security page is a real finding (`security_page_checked = true`, `security_page_url = null`,
+  rendered as `no security page found`), not a failed fetch to retry.
+
+`driveableFields` then demotes `size_band` to one discretionary turn, so the field that
+monopolised v1's budget cannot do it again — unless it is the only unknown left, in which case
+a second look beats ending the loop with fetches in hand.
+
+### D-29 · Zero open roles is not a small company [§2.3]
+The spec maps `0-5 roles → likely ≤ 50`. `bandForJobCount(0)` returns `null` instead, because
+nearly every zero we observed was a JavaScript-rendered board that neither fetch tier could read
+— whatfix's careers page yields 0 links even through `r.jina.ai`. Reading "we could not see the
+listings" as "they are a small company" is the same fabrication as D-27 pointing the other way,
+and it feeds R-02b, which **drops** companies. A wrong DROP is worse than no DROP.
+
+For the same reason `statedSize` rejects a people-number in a sentence about customers. atlan.com
+publishes *"onboarded 6,000 people onto the platform"*; reading that as headcount would have
+dropped a fitting company on R-02 using a figure about its users.
+
+### D-30 · R-02 splits into a/b/c so the board shows which evidence dropped you [§2.4]
+One rule id for two very different kinds of evidence hid the difference. R-02a is a headcount the
+company stated on its own site with a quote behind it; R-02b is a band counted from open roles
+with no quote at all and `evidence: null` by construction. Same verdict, different confidence,
+and a judge reading the board has to be able to see which happened. R-02c is not a drop — it
+flags `size_unknown` on a passing company so an unanswered question stays visible instead of
+passing silently.
+
+### D-31 · A cache hit does not refund a loop fetch [§2.6b]
+`page_cache` has a 7-day TTL and saves the request to the company's server and the tokens spent
+cleaning the page. It does **not** return a slot to the budget. `MAX_EXTRA_FETCHES` models
+*questions answered*, not money spent — if a hit were free, re-running the same list would buy
+the loop more reading than a first run had, and the same input would stop producing the same
+verdict. §11's determinism requirement outranks the saving.
+
+### D-32 · The politeness delay is charged on the gap, not before each request [§0.1, §2.6a]
+`awaitPoliteness` waits only the remainder owed since the last request to that host, so two
+reserved fetches cost 800ms of delay between them rather than 800ms each, and time already spent
+cleaning the previous page or waiting on a model call counts toward the gap. Inside a 60s handler
+that difference is the margin. `Crawl-delay` from robots.txt overrides the default when larger,
+capped at 5s — a 60s handler cannot honour a 60s delay and still read anything, and quietly
+ignoring the directive would be worse than capping it visibly.
+
+### D-33 · Hunter metadata is read from cache only, never fetched [§2.3 source 3]
+Size inference runs **before** the fit gate, and the fit gate can DROP. A live Hunter lookup
+there would spend a credit on a company we are about to discard. `peekHunterMeta` reads the
+existing cache and returns null otherwise — zero credits, zero network. This also fixed a
+guarantee-of-nothing bug: v1 cached only the email array, so the `company_size` field source 3
+reads could never have been present.
+
+### D-34 · zomato.com is replaced by zerodha.com [§2.5]
+zomato's robots.txt answers 403, so it quarantined before the fit gate ran and the R-01
+demonstration — the non-SaaS DROP the sample set exists to show — never happened. A domain that
+cannot be read cannot demonstrate a rule about what it is. zerodha.com is equally plainly not
+B2B SaaS (a retail stock brokerage) and both its robots.txt and homepage return 200 with ~950
+clean words. swiggy.com (202, 0 words) and nykaa.com (52 words) were tried first and rejected on
+the same ground. Verified by running them, not assumed.

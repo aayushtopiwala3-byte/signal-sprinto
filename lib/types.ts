@@ -13,6 +13,13 @@ export type Evidence = { quote: string; url: string };
  * `pressure_signals` is the exception: it may be an empty array, but is not null once a page
  * has been read.
  */
+/**
+ * Where a headcount band came from. The distinction is load-bearing: R-02 drops a company on
+ * size, and dropping one on a guess dressed as a fact is the failure mode this whole build is
+ * organised against. `inferred` bands are rendered without a quote chip and say so in words.
+ */
+export type SizeSource = "stated" | "inferred" | "hunter";
+
 export type EvidenceMap = {
   is_b2b_saas: boolean | null;
   is_b2b_saas_evidence: Evidence | null;
@@ -20,6 +27,8 @@ export type EvidenceMap = {
   cert_status_evidence: Evidence | null;
   size_band: SizeBand | null;
   size_band_evidence: Evidence | null;
+  /** null whenever `size_band` is null. Never `stated` without a verbatim quote to back it. */
+  size_source: SizeSource | null;
   pressure_signals: string[] | null;
   /** R-03 input. Not a loop-gating field: absence is treated as "not a services business". */
   is_services: boolean | null;
@@ -32,6 +41,7 @@ export const EMPTY_EVIDENCE_MAP: EvidenceMap = {
   cert_status_evidence: null,
   size_band: null,
   size_band_evidence: null,
+  size_source: null,
   pressure_signals: null,
   is_services: null,
 };

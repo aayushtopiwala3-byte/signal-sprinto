@@ -1,3 +1,5 @@
+import { HEADCOUNT_FACT } from "@/lib/size/infer";
+
 /**
  * ③ Clean (§7.1). Strip chrome, drop short blocks, de-duplicate, cap at 2,000 tokens.
  *
@@ -65,6 +67,12 @@ export type CleanedPage = {
   words: number;
   /** Absolute, same-host candidate links for AI-2's shortlist. */
   links: { url: string; label: string }[];
+  /**
+   * Links that look like individual job postings, counted by `lib/size/infer.ts`. Kept separate
+   * from `links` because these may be off-host (Greenhouse, Lever, Ashby) and AI-2 must never be
+   * offered an off-site page to fetch.
+   */
+  job_links: string[];
   /** Page `<title>`, kept because it is often the clearest statement of what a company sells. */
   title: string | null;
 };
@@ -115,6 +123,52 @@ export function extractLinks(html: string, baseUrl: string): { url: string; labe
   return out;
 }
 
+/** Applicant-tracking hosts. A careers page that links here keeps its listings off-domain. */
+const ATS_HOST =
+  /\b(?:boards\.greenhouse\.io|job-boards\.greenhouse\.io|jobs\.lever\.co|jobs\.ashbyhq\.com|apply\.workable\.com|[\w-]+\.recruitee\.com|[\w-]+\.bamboohr\.com|[\w-]+\.freshteam\.com|jobs\.smartrecruiters\.com|[\w-]+\.myworkdayjobs\.com|[\w-]+\.darwinbox\.in|[\w-]+\.keka\.com|[\w-]+\.zohorecruit\.com)\b/i;
+
+/** A path that names one posting rather than the board itself: /careers/senior-engineer. */
+const JOB_DETAIL_PATH = /\/(?:careers?|jobs?|openings?|positions?|vacancies)\/[^/]+/i;
+
+/**
+ * Count links that point at a single job posting. This is the input to §2.3's headcount
+ * inference, and it is deliberately conservative: a board rendered in JavaScript produces zero
+ * links, and `inferSize` treats zero as "could not measure" rather than "small company".
+ */
+export function extractJobLinks(html: string, baseUrl: string): string[] {
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    return [];
+  }
+
+  const found = new Set<string>();
+  for (const match of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["']/gi)) {
+    const href = decodeEntities(match[1]).trim();
+    if (!href || href.startsWith("#")) continue;
+    let url: URL;
+    try {
+      url = new URL(href, base);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+
+    const isAts = ATS_HOST.test(url.hostname);
+    const isDetail = JOB_DETAIL_PATH.test(url.pathname);
+    // An ATS *board* root is one link, not one job; require a path segment under it too.
+    if (isAts && url.pathname.split("/").filter(Boolean).length < 2) continue;
+    if (!isAts && !isDetail) continue;
+
+    url.hash = "";
+    url.search = "";
+    found.add(url.toString().replace(/\/$/, ""));
+    if (found.size >= 300) break;
+  }
+  return [...found];
+}
+
 export function extractTitle(html: string): string | null {
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   if (!m) return null;
@@ -151,18 +205,26 @@ export function cleanHtml(input: string, opts: { isMarkdown?: boolean } = {}): C
 
   const blocks: string[] = [];
   const seen = new Set<string>();
+  const facts: string[] = [];
 
   for (const rawBlock of s.split(/\n+/)) {
     const block = rawBlock.trim();
     if (block.length === 0) continue;
 
+    // A stated headcount is often a three-word block — "| 500 Employees" — and the 8-word floor
+    // deleted it. Two words is enough when the block is a headcount statement; the pattern is
+    // narrow enough that nav labels do not match it.
+    const isFact = block.length <= 300 && HEADCOUNT_FACT.test(block);
+
     // Drop blocks under 8 words: that is nav labels, button text and legal boilerplate.
-    if (wordCount(block) < 8) continue;
+    if (!isFact && wordCount(block) < 8) continue;
+    if (isFact && wordCount(block) < 2) continue;
 
     const key = block.toLowerCase().replace(/[^a-z0-9 ]/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
 
+    if (isFact) facts.push(block);
     blocks.push(block);
   }
 
@@ -175,12 +237,22 @@ export function cleanHtml(input: string, opts: { isMarkdown?: boolean } = {}): C
     // fails its own verbatim check later.
     const lastBreak = text.lastIndexOf("\n");
     if (lastBreak > capChars * 0.5) text = text.slice(0, lastBreak);
+
+    // The cap is a cost control. It must not decide which facts exist — and on whatfix.com it
+    // was doing exactly that: "crossing 500 employees globally" sits 72% of the way through
+    // /about-us, so the page we kept said nothing about headcount and R-02 could never fire.
+    // Headcount blocks are re-appended verbatim (so any quote taken from them still verifies
+    // against the page) and capped hard, because the point is to keep a sentence, not a section.
+    const kept = new Set(text.split("\n"));
+    const rescued = facts.filter((f) => !kept.has(f)).slice(0, 4);
+    if (rescued.length > 0) text = `${text}\n${rescued.join("\n")}`;
   }
 
   return {
     text,
     words: wordCount(text),
     links: [],
+    job_links: [],
     title,
   };
 }
@@ -188,5 +260,19 @@ export function cleanHtml(input: string, opts: { isMarkdown?: boolean } = {}): C
 /** Convenience wrapper that keeps links and title together with the text. */
 export function cleanPage(html: string, url: string, isMarkdown = false): CleanedPage {
   const cleaned = cleanHtml(html, { isMarkdown });
-  return { ...cleaned, links: isMarkdown ? [] : extractLinks(html, url) };
+  return {
+    ...cleaned,
+    links: isMarkdown ? [] : extractLinks(html, url),
+    // Jina Reader output keeps markdown links, so job postings are still countable there — which
+    // matters, because a JS-rendered board is exactly the case tier 2 exists for.
+    job_links: isMarkdown ? extractMarkdownJobLinks(html, url) : extractJobLinks(html, url),
+  };
+}
+
+/** The same count, over Jina's `[label](url)` output instead of anchors. */
+export function extractMarkdownJobLinks(markdown: string, baseUrl: string): string[] {
+  const anchors = [...markdown.matchAll(/\[[^\]]*\]\(([^)\s]+)[^)]*\)/g)]
+    .map((m) => `<a href="${m[1]}">`)
+    .join("");
+  return extractJobLinks(anchors, baseUrl);
 }

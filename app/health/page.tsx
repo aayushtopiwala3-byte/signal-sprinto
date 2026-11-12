@@ -10,6 +10,9 @@ import {
 import { PINNED_MODEL_ID, USD_TO_INR, resolveModelId } from "@/lib/ai/model";
 import { HUNTER_LIMIT, QUOTA_GUARD_RATIO, fetchQuota } from "@/lib/hunter/client";
 import { capability, env } from "@/lib/env";
+import { FETCH_DELAY_MS } from "@/lib/fetch/tiers";
+import { MAX_CRAWL_DELAY_MS } from "@/lib/fetch/robots";
+import { PAGE_CACHE_MAX_AGE_DAYS } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 import * as q from "@/lib/db/queries";
 
@@ -20,10 +23,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** §9's health page: model id, Hunter quota, cost in ₹ and USD, cache-hit rate, staleness. */
 export default async function HealthPage() {
   const run = await q.latestRun();
-  const [quota, cost, ledger] = await Promise.all([
+  const [quota, cost, ledger, pages] = await Promise.all([
     fetchQuota(),
     run ? q.costSummary(run.id) : Promise.resolve(null),
     run ? q.costLedger(run.id) : Promise.resolve([]),
+    run ? q.cacheCounts(run.id) : Promise.resolve({ cached: 0, live: 0 }),
   ]);
 
   const startedAt = run ? new Date(run.started_at) : null;
@@ -156,6 +160,38 @@ export default async function HealthPage() {
                 ))}
               </div>
             ) : null}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex items-center gap-2">
+            <CardTitle>Pages read — latest run</CardTitle>
+            <Badge tone={pages.cached > 0 ? "send" : "neutral"}>
+              {pages.cached > 0 ? "cache warm" : "cold"}
+            </Badge>
+          </CardHeader>
+          <CardBody className="space-y-1.5 text-xs">
+            <Row
+              label="This run"
+              value={`${pages.cached} page${pages.cached === 1 ? "" : "s"} served from cache · ${pages.live} live fetch${pages.live === 1 ? "" : "es"}`}
+              mono
+            />
+            <Row
+              label="Cache entries expire after"
+              value={`${PAGE_CACHE_MAX_AGE_DAYS} days`}
+              mono
+            />
+            <Row
+              label="Politeness gap"
+              value={`${FETCH_DELAY_MS}ms, or robots.txt Crawl-delay up to ${MAX_CRAWL_DELAY_MS}ms`}
+              mono
+            />
+            <p className="pt-1 text-[11px] leading-snug text-ink-400">
+              A cache hit skips the request to the company&apos;s server and the tokens spent
+              cleaning the page, but it still spends one of the four extra fetches. The budget
+              counts questions answered, not money spent — so re-running a list cannot buy the
+              loop more reading than a first run had.
+            </p>
           </CardBody>
         </Card>
 

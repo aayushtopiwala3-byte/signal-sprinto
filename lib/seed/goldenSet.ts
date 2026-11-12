@@ -99,17 +99,26 @@ export const GOLDEN_SET: GoldenCase[] = [
   },
   {
     id: "T-03",
-    title: "`size_band = '500+'` returns DROP with `rule_fired = 'R-02'`",
+    title: "`size_band = '500+'` returns DROP with `rule_fired = 'R-02a'` (stated) or `'R-02b'` (inferred)",
     run: () => {
-      const r = computeVerdict(
-        ev({ ...FITTING, size_band: "500+" }),
+      const stated = computeVerdict(
+        ev({ ...FITTING, size_band: "500+", size_source: "stated" }),
+        [],
+        DEFAULT_WEIGHTS,
+        sw(),
+      );
+      const inferred = computeVerdict(
+        ev({ ...FITTING, size_band: "500+", size_source: "inferred" }),
         [],
         DEFAULT_WEIGHTS,
         sw(),
       );
       return check(
-        r.verdict === "DROP" && r.rule_fired === "R-02",
-        `${r.verdict} / ${r.rule_fired} — ${r.verdict_reason}`,
+        stated.verdict === "DROP" &&
+          stated.rule_fired === "R-02a" &&
+          inferred.verdict === "DROP" &&
+          inferred.rule_fired === "R-02b",
+        `stated → ${stated.verdict} / ${stated.rule_fired}; inferred → ${inferred.verdict} / ${inferred.rule_fired}`,
       );
     },
   },

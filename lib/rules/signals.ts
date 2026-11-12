@@ -78,8 +78,14 @@ function find(
 }
 
 const CERT_NAME = /\b(soc\s*2|soc2|iso\s*27001|iso27001|hipaa|pci[- ]?dss)\b/i;
+// §2.2 widened this list. v1's wording missed the two phrasings companies actually use on a
+// trust page — "we are pursuing SOC 2" and "SOC 2 Type I" with no Type II anywhere — which is
+// part of why S-01 fired on nobody across the whole sample.
 const IN_PROGRESS =
-  /\b(in progress|under way|underway|coming soon|on our roadmap|roadmap|pursuing|working towards|working toward|currently undergoing|in the process of|we are seeking|audit is|type\s*1\b|observation period)\b/i;
+  /\b(in progress|in-progress|under way|underway|coming soon|on our roadmap|roadmap|pursuing|working towards|working toward|currently undergoing|undergoing|in the process of|we are seeking|audit is|audit in progress|observation period|actively working|nearing completion|expected (?:in|by)|targeting)\b/i;
+/** Type I with no Type II claimed anywhere is itself an "in progress" statement (§2.2). */
+const TYPE_I = /\btype\s*(?:1|i)\b/i;
+const TYPE_II = /\btype\s*(?:2|ii)\b/i;
 const CERTIFIED_BADGE =
   /\b(we are (?:soc\s*2|iso\s*27001)|certified|attestation|compliant with|successfully completed|achieved|report is available|we hold)\b/i;
 const SECURITY_PAGE_URL = /\/(security|trust|compliance|privacy\/security)\b/i;
@@ -120,30 +126,45 @@ export function detectSignals(input: SignalInput, weights: Weights): FiredSignal
     });
   };
 
+  // §2.2 — S-01 and S-02 are read against the security/trust page *specifically*, not against
+  // the merged corpus. The corpus buries one page's worth of compliance language in four pages
+  // of marketing copy, and a sentence that must match two patterns at once rarely survives that.
+  // The security page is now a reserved fetch (lib/fetch/plan.ts), so it is usually present.
+  const securityPages = pages.filter((p) => SECURITY_PAGE_URL.test(p.url));
+  const certScope = securityPages.length > 0 ? securityPages : pages;
+
   // S-01 — their own site says a certification is under way.
   const certEvidence = evidence.cert_status_evidence;
   if (evidence.cert_status === "in_progress" && certEvidence) {
     push("S-01", { quote: certEvidence.quote, url: certEvidence.url });
   } else {
-    push("S-01", find(pages, { all: [CERT_NAME, IN_PROGRESS] }));
+    const claimsTypeII = pages.some((p) => TYPE_II.test(p.text));
+    push(
+      "S-01",
+      find(certScope, { all: [CERT_NAME, IN_PROGRESS] }) ??
+        // "SOC 2 Type I" standing alone says the Type II audit has not happened yet.
+        (claimsTypeII ? null : find(certScope, { all: [CERT_NAME, TYPE_I] })) ??
+        find(pages, { all: [CERT_NAME, IN_PROGRESS] }),
+    );
   }
 
   // S-02 — a security or trust page exists, with no badge on it. Only meaningful when they
   // are not already certified, otherwise the badge is simply elsewhere.
   if (evidence.cert_status !== "certified") {
-    const securityPage = pages.find((p) => SECURITY_PAGE_URL.test(p.url));
-    if (securityPage) {
+    for (const securityPage of securityPages) {
       const hasBadge = sentences(securityPage.text).some(
         (s) => CERT_NAME.test(s) && CERTIFIED_BADGE.test(s),
       );
-      if (!hasBadge) {
-        const hit =
-          find([securityPage], { any: [/\bsecurity\b/i, /\btrust\b/i, /\bcompliance\b/i] }) ??
-          (sentences(securityPage.text)[0]
-            ? { quote: sentences(securityPage.text)[0], url: securityPage.url }
-            : null);
-        push("S-02", hit);
-      }
+      if (hasBadge) continue;
+      const hit =
+        find([securityPage], { any: [/\bsecurity\b/i, /\btrust\b/i, /\bcompliance\b/i] }) ??
+        (sentences(securityPage.text)[0]
+          ? { quote: sentences(securityPage.text)[0], url: securityPage.url }
+          : null);
+      push("S-02", hit);
+      // One page, one signal. S-01 and S-02 already share an independence group; firing S-02
+      // twice would double its points without adding a second reading.
+      break;
     }
   }
 

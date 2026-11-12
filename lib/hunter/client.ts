@@ -36,7 +36,41 @@ export type ContactLookup = {
   /** Named reason whenever we did not go to the live API. */
   note: string | null;
   creditUsed: boolean;
+  /**
+   * The non-email half of Hunter's response — organization, industry and sometimes a headcount.
+   * §2.3's third size source reads it. Frequently absent, and absence is never an error.
+   */
+  meta: unknown | null;
 };
+
+/** What `hunter_cache` holds. The array form is the pre-v2 shape and is still read. */
+type CachedHunter = { emails?: HunterEmail[]; [key: string]: unknown };
+
+function readCached(json: string): { emails: HunterEmail[]; meta: unknown | null } {
+  const parsed = JSON.parse(json) as HunterEmail[] | CachedHunter;
+  // v1 stored the bare email array, so every row written before this change has no metadata.
+  // Those rows are not re-fetched to get it: a Hunter credit is not worth spending on a field
+  // that is usually absent anyway.
+  if (Array.isArray(parsed)) return { emails: parsed, meta: null };
+  return { emails: parsed.emails ?? [], meta: parsed };
+}
+
+/**
+ * Read Hunter's metadata for a domain *from the cache only* — no request, no credit.
+ *
+ * Size inference runs before the fit gate, and the fit gate can DROP, so a live lookup here
+ * would spend a credit on companies we are about to discard. This is deliberately the weakest
+ * of the three sources: it answers only for domains we have already paid to look up.
+ */
+export async function peekHunterMeta(domain: string): Promise<unknown | null> {
+  try {
+    const rows = await sql<{ response_json: string }>`
+      SELECT response_json FROM hunter_cache WHERE domain = ${domain}`;
+    return rows.length > 0 ? readCached(rows[0].response_json).meta : null;
+  } catch {
+    return null;
+  }
+}
 
 type HunterEmail = {
   value?: string;
@@ -106,7 +140,7 @@ export async function fetchQuota(): Promise<HunterQuota | null> {
 
 function seededFor(domain: string, note: string): ContactLookup {
   const seeded = SEEDED_CONTACTS[domain] ?? [];
-  return { candidates: seeded, source: "seeded", note, creditUsed: false };
+  return { candidates: seeded, source: "seeded", note, creditUsed: false, meta: null };
 }
 
 /**
@@ -119,12 +153,13 @@ export async function findContacts(domain: string): Promise<ContactLookup> {
     const cached = await sql<{ response_json: string }>`
       SELECT response_json FROM hunter_cache WHERE domain = ${domain}`;
     if (cached.length > 0) {
-      const emails = JSON.parse(cached[0].response_json) as HunterEmail[];
+      const { emails, meta } = readCached(cached[0].response_json);
       return {
         candidates: toCandidates(emails),
         source: "cached",
         note: "served from the per-domain cache — no Hunter credit consumed",
         creditUsed: false,
+        meta,
       };
     }
   } catch {
@@ -162,13 +197,17 @@ export async function findContacts(domain: string): Promise<ContactLookup> {
       );
     }
 
-    const json = (await response.json()) as { data?: { emails?: HunterEmail[] } };
-    const emails = json.data?.emails ?? [];
+    const json = (await response.json()) as { data?: CachedHunter };
+    const data = json.data ?? {};
+    const emails = data.emails ?? [];
 
     try {
+      // The whole `data` object, not just the emails: v1 stored the array and so threw away the
+      // organization block that §2.3's third size source needs. Caching the response as Hunter
+      // sent it costs nothing extra and does not require a second credit later.
       await sql`
         INSERT INTO hunter_cache (domain, response_json)
-        VALUES (${domain}, ${JSON.stringify(emails)})
+        VALUES (${domain}, ${JSON.stringify(data)})
         ON CONFLICT (domain) DO NOTHING`;
     } catch {
       // Caching is an optimisation.
@@ -181,7 +220,13 @@ export async function findContacts(domain: string): Promise<ContactLookup> {
       );
     }
 
-    return { candidates: toCandidates(emails), source: "live", note: null, creditUsed: true };
+    return {
+      candidates: toCandidates(emails),
+      source: "live",
+      note: null,
+      creditUsed: true,
+      meta: data,
+    };
   } catch (err) {
     return seededFor(
       domain,

@@ -73,6 +73,8 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           error: company.error,
           missing_fields: JSON.parse(company.missing_fields_json ?? "[]") as string[],
           evidence: q.evidenceFromRow(company),
+          security_page_checked: company.security_page_checked ?? false,
+          security_page_url: company.security_page_url,
         }}
         whatWouldChangeIt={whatWouldChangeIt}
         signals={signals}
@@ -87,6 +89,8 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           status_code: f.status_code,
           word_count: f.word_count,
           error: f.error,
+          from_cache: f.from_cache ?? false,
+          delay_ms: f.delay_ms ?? 0,
         }))}
         alreadySent={sends.some((s) => s.status === "sent")}
         feedback={feedback}

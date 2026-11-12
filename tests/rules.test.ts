@@ -28,22 +28,46 @@ const signal = (
   source_url: "https://example.com/",
 });
 
-describe("T-03 — R-02 headcount gate (§5.1)", () => {
-  it("drops a 500+ company and names R-02", () => {
+describe("T-03 — R-02 headcount gate (§5.1, §2.4)", () => {
+  it("drops a 500+ company stated on its own site and names R-02a", () => {
     const result = computeVerdict(
-      fittingEvidence({ size_band: "500+" }),
+      fittingEvidence({ size_band: "500+", size_source: "stated" }),
       [signal("S-01", 40, "certification"), signal("S-03", 30, "hiring")],
       weights(),
       switches(),
     );
     expect(result.verdict).toBe("DROP");
-    expect(result.rule_fired).toBe("R-02");
+    expect(result.rule_fired).toBe("R-02a");
     expect(result.verdict_reason).toContain("headcount above 500");
+  });
+
+  it("names R-02b instead when the band was counted rather than read", () => {
+    // Same verdict, different rule id, because the evidence behind it is weaker. A judge
+    // reading the board has to be able to see which of the two happened.
+    const result = computeVerdict(
+      fittingEvidence({ size_band: "500+", size_source: "inferred" }),
+      [],
+      weights(),
+      switches(),
+    );
+    expect(result.verdict).toBe("DROP");
+    expect(result.rule_fired).toBe("R-02b");
+    expect(result.verdict_reason).toContain("inferred");
   });
 
   it("does not fire on an unknown headcount — we never drop for a fact we failed to find", () => {
     const fit = evaluateFit(fittingEvidence({ size_band: null }), switches());
     expect(fit.pass).toBe(true);
+  });
+
+  it("R-02c flags the gap rather than silently passing the company through", () => {
+    const fit = evaluateFit(fittingEvidence({ size_band: null }), switches());
+    expect(fit.pass && fit.size_unknown).toBe(true);
+    const known = evaluateFit(
+      fittingEvidence({ size_band: "51-200", size_source: "stated" }),
+      switches(),
+    );
+    expect(known.pass && known.size_unknown).toBe(false);
   });
 });
 

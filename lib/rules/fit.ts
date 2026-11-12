@@ -8,7 +8,13 @@ import type { EvidenceMap, Switches } from "@/lib/types";
  */
 
 export type FitResult =
-  | { pass: true; play: "greenfield" | "migration"; note: string | null }
+  | {
+      pass: true;
+      play: "greenfield" | "migration";
+      note: string | null;
+      /** R-02c. True when the company passed the size gate only because size is unknown. */
+      size_unknown?: boolean;
+    }
   | { pass: false; verdict: "DROP" | "HOLD"; rule_fired: string; verdict_reason: string };
 
 export function evaluateFit(evidence: EvidenceMap, switches: Switches): FitResult {
@@ -33,15 +39,26 @@ export function evaluateFit(evidence: EvidenceMap, switches: Switches): FitResul
     };
   }
 
-  // R-02 — a null size_band is unknown, not large, so it does not fire.
+  // R-02 — three paths (§2.4), because "we read it on their site" and "we counted their job
+  // ads" are not the same claim, and this rule discards a company. A single R-02 collapsed both
+  // into a bare band, which meant the card could not show which one had happened.
   if (evidence.size_band === "500+") {
+    const inferred = evidence.size_source === "inferred";
     return {
       pass: false,
       verdict: "DROP",
-      rule_fired: "R-02",
-      verdict_reason: "DROP — R-02: headcount above 500, has in-house GRC",
+      // R-02b is the weaker evidence and is labelled as such wherever the rule id appears.
+      rule_fired: inferred ? "R-02b" : "R-02a",
+      verdict_reason: inferred
+        ? "DROP — R-02b: headcount inferred above 500 from the number of open roles, so they will already have in-house GRC"
+        : "DROP — R-02a: headcount above 500, stated on their own site — has in-house GRC",
     };
   }
+
+  // R-02c — unknown size does not gate. We do not drop a company for a fact we failed to find,
+  // but the gap is carried forward rather than forgotten: `size_unknown` puts it in the
+  // counterfactual, so the card says what would change the verdict instead of going quiet.
+  const sizeUnknown = evidence.size_band === null;
 
   // R-03
   if (evidence.is_services === true) {
@@ -68,8 +85,9 @@ export function evaluateFit(evidence: EvidenceMap, switches: Switches): FitResul
       pass: true,
       play: "migration",
       note: "Already certified. strict_icp is off, so this routes to the migration play and ranks below every greenfield company.",
+      size_unknown: sizeUnknown,
     };
   }
 
-  return { pass: true, play: "greenfield", note: null };
+  return { pass: true, play: "greenfield", note: null, size_unknown: sizeUnknown };
 }

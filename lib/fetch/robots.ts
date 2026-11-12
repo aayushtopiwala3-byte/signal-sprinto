@@ -10,9 +10,23 @@ export const USER_AGENT =
 /** The token we match against `User-agent:` groups. */
 export const UA_TOKEN = "signalbot";
 
+/**
+ * A ceiling on `Crawl-delay`. Some sites publish 30 or 60 seconds, which a 60-second handler
+ * cannot honour and still read anything. Capping it is a compromise, so it is stated rather than
+ * hidden: we slow down as far as one invocation allows and no further.
+ */
+export const MAX_CRAWL_DELAY_MS = 5000;
+
 export type RobotsRules = {
   allow: string[];
   disallow: string[];
+  /**
+   * `Crawl-delay`, in milliseconds, when the group that applies to us sets one. Honoured by
+   * `lib/fetch/tiers.ts` whenever it is longer than our own 800 ms floor: a site that asks for
+   * more space is asking for it from us specifically, and ignoring it while claiming to be a
+   * polite crawler would be a claim the code does not back.
+   */
+  crawl_delay_ms: number | null;
 };
 
 export type RobotsGate =
@@ -24,8 +38,8 @@ export type RobotsGate =
  * over the `*` group; consecutive `User-agent:` lines share one group, per the standard.
  */
 export function parseRobots(text: string): RobotsRules {
-  const starRules: RobotsRules = { allow: [], disallow: [] };
-  const ourRules: RobotsRules = { allow: [], disallow: [] };
+  const starRules: RobotsRules = { allow: [], disallow: [], crawl_delay_ms: null };
+  const ourRules: RobotsRules = { allow: [], disallow: [], crawl_delay_ms: null };
   let sawOurGroup = false;
 
   let activeAgents: string[] = [];
@@ -46,6 +60,22 @@ export function parseRobots(text: string): RobotsRules {
         expectingAgents = true;
       }
       activeAgents.push(value.toLowerCase());
+      continue;
+    }
+
+    if (field === "crawl-delay") {
+      // Published in seconds, often fractional. A group that sets it still counts as a group,
+      // so `User-agent: SignalBot` + `Crawl-delay: 5` alone selects our rules.
+      expectingAgents = false;
+      const seconds = Number(value);
+      if (!Number.isFinite(seconds) || seconds <= 0) continue;
+      const ms = Math.min(seconds * 1000, MAX_CRAWL_DELAY_MS);
+      for (const agent of activeAgents) {
+        const target = agent === UA_TOKEN ? ourRules : agent === "*" ? starRules : null;
+        if (!target) continue;
+        if (agent === UA_TOKEN) sawOurGroup = true;
+        target.crawl_delay_ms = Math.max(target.crawl_delay_ms ?? 0, ms);
+      }
       continue;
     }
 
@@ -105,7 +135,7 @@ export async function checkRobots(domain: string, timeoutMs = 8000): Promise<Rob
   if (response.status === 404 || response.status === 410) {
     return {
       allowed: true,
-      rules: { allow: [], disallow: [] },
+      rules: { allow: [], disallow: [], crawl_delay_ms: null },
       note: "no robots.txt published, crawling permitted",
     };
   }

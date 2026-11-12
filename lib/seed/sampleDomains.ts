@@ -10,7 +10,11 @@ export const SAMPLE_DOMAINS: string[] = [
   "springworks.in",
   "apty.io",
   "whatfix.com",
-  "zomato.com",
+  // Was zomato.com. Its robots.txt answers 403, so it quarantined before the fit gate could
+  // run and the R-01 demonstration never happened. zerodha.com is also plainly not B2B SaaS —
+  // a retail stock brokerage — and its robots.txt and homepage are both readable, so R-01
+  // actually fires. Verified by running it, not assumed (§2.5).
+  "zerodha.com",
   "atlan.com",
   "  HTTPS://Rocketlane.com/pricing?utm_source=x  ",
   "rocketlane.com",
@@ -24,9 +28,8 @@ export const SAMPLE_TEXT = SAMPLE_DOMAINS.join("\n");
 export const SAMPLE_NOTES = [
   "3 entries collapse to rocketlane.com — one company, one Hunter credit",
   "sprinto-test-does-not-exist-9x.com cannot resolve — quarantined, run continues",
-  // Written when zomato was expected to reach the rules engine and fail R-01. It never gets
-  // that far: zomato.com/robots.txt answers 403, so the gate stops it before any page is read.
-  // The note now says what actually happens, because a line claiming a rule fired when it did
-  // not is the same fabrication §1 forbids, just aimed at the reader instead of the board.
-  "zomato.com blocks crawlers — robots.txt returns 403, so it is quarantined before any fetch",
+  // This slot held zomato.com, which was chosen to demonstrate R-01 and never could: its
+  // robots.txt answers 403, so the gate stopped it before any page was read. zerodha.com was
+  // swapped in only after checking that its robots.txt and homepage both return content.
+  "zerodha.com is a stock brokerage, not B2B SaaS — DROP on R-01",
 ];

@@ -2,11 +2,20 @@ import { runCostUsd, aiCall } from "@/lib/ai/call";
 import { PainPointsSchema, buildPainPointsPrompt } from "@/lib/ai/prompts/painPoints";
 import { DraftSchema, buildDraftPrompt } from "@/lib/ai/prompts/draft";
 import { checkRobots } from "@/lib/fetch/robots";
-import { fetchPage, type FetchOutcome } from "@/lib/fetch/tiers";
+import { fetchPage, FETCH_DELAY_MS, type FetchOutcome } from "@/lib/fetch/tiers";
+import {
+  RESERVED_SLOTS,
+  RESERVED_MIN_WORDS,
+  driveableFields,
+  slotCandidates,
+  slotFor,
+  type ReservedSlot,
+} from "@/lib/fetch/plan";
+import { inferSize, type SizePage } from "@/lib/size/infer";
 import { extractWithAi, extractWithRules } from "@/lib/pipeline/extract";
 import { MAX_EXTRA_FETCHES, emptyFields, shouldContinue } from "@/lib/pipeline/completeness";
 import { chooseNextUrl } from "@/lib/pipeline/loop";
-import { findContacts } from "@/lib/hunter/client";
+import { findContacts, peekHunterMeta } from "@/lib/hunter/client";
 import { evaluateFit } from "@/lib/rules/fit";
 import { detectSignals, type PageRecord } from "@/lib/rules/signals";
 import { computeVerdict } from "@/lib/rules/verdict";
@@ -43,6 +52,17 @@ const HANDLER_BUDGET_MS = 55_000;
 const TAIL_RESERVE_MS = 25_000;
 /** Rough cost of one Gemini call, used to decide whether ⑨ and ⑩ still fit. */
 const AI_CALL_RESERVE_MS = 8_000;
+
+/**
+ * §0.1 — what the security page costs, worst case: up to three probes at 8s plus the 800ms
+ * politeness gaps between them, plus the extraction call that reads the result.
+ *
+ * Reserved fetch 1 is never skipped by the deadline guard. If there is not enough of the
+ * handler left to make it, the domain quarantines as `handler_timeout` instead: a HOLD produced
+ * without ever opening the page that carries S-01, S-02 and S-03 looks like a verdict and is
+ * not one, and shipping that would be the same fabrication in a different costume.
+ */
+export const SECURITY_SLOT_RESERVE_MS = 28_000;
 
 /** Exported for the test; `elapsed` is injected rather than read from the clock. */
 export function timeLeftMs(elapsedMs: number): number {
@@ -120,9 +140,21 @@ async function recordFetch(companyId: string, outcome: FetchOutcome): Promise<vo
       ok: attempt.ok,
       error: attempt.error,
       cleanText: i === winningIndex ? (outcome.page?.text ?? null) : null,
+      fromCache: outcome.cached,
+      delayMs: i === 0 ? outcome.delay_ms : 0,
     });
   }
 }
+
+/**
+ * How many URLs one reserved slot may probe before giving up.
+ *
+ * A slot is one *question* — "do they publish a security page?" — and conventional paths are
+ * guesses at where the answer lives, so a miss is not a failed fetch so much as a wrong guess.
+ * Three keeps the common cases (`/security`, `/trust`, `/compliance`) reachable without letting
+ * a site with none of them eat the whole handler.
+ */
+const MAX_SLOT_PROBES = 3;
 
 export async function runCompany(companyId: string): Promise<RunCompanyResult> {
   const startedAt = Date.now();
@@ -158,8 +190,14 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
 
     /* ② + ③ homepage, through the tier ladder and the cleaner. */
     await q.setStage(companyId, "fetch");
+
+    // §2.6a — our 800ms floor, raised to whatever the site asked for if it asked for more.
+    const delayMs = Math.max(FETCH_DELAY_MS, robots.rules.crawl_delay_ms ?? 0);
+    const cache = { get: q.getCachedPage, put: q.putCachedPage };
+    const fetchOpts = { readerEnabled: switches.reader_enabled, delayMs, cache };
+
     const homeUrl = `https://${domain}/`;
-    const home = await fetchPage(homeUrl, { readerEnabled: switches.reader_enabled });
+    const home = await fetchPage(homeUrl, fetchOpts);
     await recordFetch(companyId, home);
 
     if (!home.page) {
@@ -171,6 +209,10 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
 
     const pages: PageRecord[] = [
       { url: homeUrl, text: home.page.text, title: home.page.title },
+    ];
+    /** Job links are tracked alongside the text because §2.3's second size source counts them. */
+    const sizePages: SizePage[] = [
+      { url: homeUrl, text: home.page.text, job_links: home.page.job_links },
     ];
     let candidates = home.page.links;
     const fetchedUrls = [homeUrl];
@@ -210,14 +252,34 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
     await q.setStage(companyId, "loop");
     let fetchesUsed = 0;
     let iteration = 1;
+    /** §2.3 — `size_band` may drive at most one *discretionary* choice. */
+    let sizeFetchesSpent = 0;
+
+    /**
+     * §0.1 — slot 1 is unconditional. If the homepage and its extraction have already eaten the
+     * budget, we stop here rather than scoring a company whose security page we never opened.
+     */
+    if (timeLeftMs(elapsed()) < SECURITY_SLOT_RESERVE_MS) {
+      return await quarantine(
+        "handler_timeout",
+        `the homepage alone took ${Math.round(elapsed() / 1000)}s of this request's ${Math.round(HANDLER_BUDGET_MS / 1000)}s budget, leaving no room for the security page. Scoring without it would produce a HOLD that looks like a verdict and is not one, so this domain is quarantined instead.`,
+      );
+    }
 
     for (;;) {
       const verdictOnContinuing = shouldContinue(evidence, fetchesUsed);
-      if (!verdictOnContinuing.continue) break;
+      const slot = slotFor(fetchesUsed);
+      const isReserved = slot.kind === "reserved";
+
+      // A reserved slot runs even when the Evidence Map is already full: the security page is
+      // where the signals live, and signals are not Evidence Map fields. v1 stopped as soon as
+      // the four fields were filled and so never opened it — F-3 and F-4 in one line.
+      if (!verdictOnContinuing.continue && !isReserved) break;
 
       const missing = verdictOnContinuing.missing;
 
-      if (!loopMayContinue(elapsed())) {
+      // The deadline may cut the loop short, but never before reserved slot 1 (§0.1).
+      if (!loopMayContinue(elapsed()) && fetchesUsed > 0) {
         // Recorded rather than silent: the trace is the audit panel a reader uses to see how the
         // loop decided, and "it ran out of time" is a decision they are entitled to see.
         await q.insertLoopTrace({
@@ -233,38 +295,116 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         break;
       }
 
-      const choice = await chooseNextUrl({
-        domain,
-        emptyFields: missing,
-        candidates,
-        alreadyFetched: fetchedUrls,
-        ...ai,
-      });
+      /* ------------------------------------------------- choose the next page */
+      let nextUrl: string | null = null;
+      let chosenReason: string;
+      let chosenBy: string;
+      let outcome: FetchOutcome | null = null;
 
-      if (!choice.url) {
+      if (isReserved) {
+        const reserved = slot as ReservedSlot;
+        // Links the site actually publishes are tried before conventional guesses: a real link
+        // is evidence the page exists, a guess is not.
+        const linked = candidates
+          .filter((c) => reserved.paths.some((p) => c.url.toLowerCase().includes(p)))
+          .map((c) => c.url);
+        const probes = [
+          ...new Set([...linked, ...slotCandidates(domain, reserved, fetchedUrls)]),
+        ].slice(0, MAX_SLOT_PROBES);
+
+        const tried: string[] = [];
+        for (const probe of probes) {
+          tried.push(probe);
+          fetchedUrls.push(probe);
+          const attempt = await fetchPage(probe, fetchOpts);
+          await recordFetch(companyId, attempt);
+          if (attempt.page && attempt.page.words >= RESERVED_MIN_WORDS) {
+            nextUrl = probe;
+            outcome = attempt;
+            break;
+          }
+          // A thin page is kept as a last resort but does not stop the search: a 40-word
+          // "Security" stub is not the trust page S-02 is asking about.
+          if (attempt.page && attempt.page.words > 0 && !outcome) {
+            nextUrl = probe;
+            outcome = attempt;
+          }
+          if (!loopMayContinue(elapsed()) && reserved.purpose !== "security") break;
+        }
+
+        // Recorded either way. "We looked and there is none" and "we never looked" are
+        // different facts, and the card has to be able to tell them apart.
+        if (reserved.purpose === "security") {
+          await q.saveSecurityPage(companyId, outcome?.page ? nextUrl : null);
+        }
+
+        chosenBy = "reserved";
+        chosenReason = nextUrl
+          ? `${reserved.rationale} — found at ${nextUrl}${tried.length > 1 ? ` after trying ${tried.length} conventional paths` : ""}`
+          : `${reserved.rationale} — tried ${tried.length > 0 ? tried.map((t) => new URL(t).pathname).join(", ") : "nothing: every conventional path was already read"} and none of them exist, which is itself a finding`;
+
+        // The slot is spent whether or not it found anything. It asked its question; "there is
+        // no security page" is an answer, and charging nothing for it would let a company with
+        // no trust page quietly get extra discretionary fetches the others did not.
+        fetchesUsed += 1;
+      } else {
+        const choice = await chooseNextUrl({
+          domain,
+          emptyFields: driveableFields(missing, sizeFetchesSpent),
+          candidates,
+          alreadyFetched: fetchedUrls,
+          ...ai,
+        });
+
+        if (!choice.url) {
+          await q.insertLoopTrace({
+            companyId,
+            iteration,
+            emptyFields: missing,
+            chosenUrl: null,
+            chosenReason: choice.reason,
+            chosenBy: choice.chosen_by,
+            fetchOk: null,
+            fieldsFilled: null,
+          });
+          break;
+        }
+
+        if (choice.targetField === "size_band") sizeFetchesSpent += 1;
+
+        nextUrl = choice.url;
+        chosenReason = choice.reason;
+        chosenBy = choice.chosen_by;
+        fetchesUsed += 1;
+        fetchedUrls.push(nextUrl);
+
+        outcome = await fetchPage(nextUrl, fetchOpts);
+        await recordFetch(companyId, outcome);
+      }
+
+      if (!nextUrl || !outcome) {
         await q.insertLoopTrace({
           companyId,
           iteration,
           emptyFields: missing,
           chosenUrl: null,
-          chosenReason: choice.reason,
-          chosenBy: choice.chosen_by,
-          fetchOk: null,
+          chosenReason,
+          chosenBy,
+          fetchOk: false,
           fieldsFilled: null,
         });
-        break;
+        iteration += 1;
+        continue;
       }
-
-      const nextUrl = choice.url;
-      fetchesUsed += 1;
-      fetchedUrls.push(nextUrl);
-
-      const outcome = await fetchPage(nextUrl, { readerEnabled: switches.reader_enabled });
-      await recordFetch(companyId, outcome);
 
       let filled: LoopField[] = [];
       if (outcome.page) {
         pages.push({ url: nextUrl, text: outcome.page.text, title: outcome.page.title });
+        sizePages.push({
+          url: nextUrl,
+          text: outcome.page.text,
+          job_links: outcome.page.job_links,
+        });
         // Links from deeper pages widen AI-2's shortlist on the next turn.
         candidates = [...candidates, ...outcome.page.links];
 
@@ -292,8 +432,10 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         iteration,
         emptyFields: missing,
         chosenUrl: nextUrl,
-        chosenReason: choice.reason,
-        chosenBy: choice.chosen_by,
+        chosenReason: outcome.cached
+          ? `${chosenReason} — served from the page cache, so no request was made to ${domain}`
+          : chosenReason,
+        chosenBy,
         fetchOk: Boolean(outcome.page),
         fieldsFilled: filled,
       });
@@ -303,6 +445,32 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
 
     /* ⑦ rules engine. No model involved from here to the verdict. */
     await q.setStage(companyId, "score");
+
+    // §2.3 — headcount, worked out in code over everything we read. This runs before the fit
+    // gate because R-02 needs it, and it runs even when AI-1 already answered, in case the
+    // model found a band the rules can corroborate with a better quote.
+    if (evidence.size_band === null) {
+      const size = inferSize({
+        pages: sizePages,
+        // Cache-only: a live Hunter lookup here would spend a credit on a company R-02 might
+        // be about to drop.
+        hunterResponse: await peekHunterMeta(domain),
+      });
+      if (size.finding) {
+        evidence = {
+          ...evidence,
+          size_band: size.finding.band,
+          size_band_evidence: size.finding.evidence,
+          size_source: size.finding.source,
+        };
+        await q.saveEvidence(companyId, evidence);
+      }
+    } else if (evidence.size_source === null) {
+      // AI-1 answered it. That path always carries a verbatim quote, so it is `stated`.
+      evidence = { ...evidence, size_source: "stated" };
+      await q.saveEvidence(companyId, evidence);
+    }
+
     const fired = detectSignals({ evidence, pages }, weights);
     const fit = evaluateFit(evidence, switches);
     const missingAtEnd = emptyFields(evidence);

@@ -42,6 +42,9 @@ type CompanyView = {
   error: string | null;
   missing_fields: string[];
   evidence: EvidenceMap;
+  /** §2.1 — reserved fetch 1's answer, including when the answer is "they do not have one". */
+  security_page_checked: boolean;
+  security_page_url: string | null;
 };
 
 type FetchView = {
@@ -51,6 +54,8 @@ type FetchView = {
   status_code: number | null;
   word_count: number;
   error: string | null;
+  from_cache: boolean;
+  delay_ms: number;
 };
 
 const TONE: Record<string, "send" | "hold" | "drop" | "neutral"> = {
@@ -168,7 +173,12 @@ function VerdictSection({
             value={e.is_b2b_saas === null ? null : e.is_b2b_saas ? "yes" : "no"}
             quote={e.is_b2b_saas_evidence}
           />
-          <EvidenceFact label="Headcount band" value={e.size_band} quote={e.size_band_evidence} />
+          <EvidenceFact
+            label="Headcount band"
+            value={e.size_band}
+            quote={e.size_band_evidence}
+            provenance={SIZE_SOURCE_NOTE[e.size_source ?? ""] ?? null}
+          />
           <EvidenceFact
             label="Certification"
             value={e.cert_status}
@@ -180,6 +190,30 @@ function VerdictSection({
             quote={null}
           />
         </div>
+
+        {/* §2.1 — the absence of a trust page is a finding, not a blank. */}
+        {company.security_page_checked ? (
+          company.security_page_url ? (
+            <p className="text-xs text-ink-400">
+              Security page read:{" "}
+              <a
+                href={company.security_page_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-ink-200 underline decoration-ink-600 underline-offset-2"
+              >
+                {company.security_page_url.replace(/^https?:\/\//, "")}
+              </a>{" "}
+              — one of the four extra fetches is reserved for it.
+            </p>
+          ) : (
+            <p className="text-xs text-hold">
+              <span className="font-mono">no security page found</span> — we tried /security,
+              /trust and /compliance. That absence is itself informative: S-02 cannot fire, and
+              there is no published trust page for a buyer to ask about.
+            </p>
+          )
+        ) : null}
 
         {company.missing_fields.length > 0 ? (
           <p className="text-xs text-hold">
@@ -193,14 +227,27 @@ function VerdictSection({
   );
 }
 
+/**
+ * §2.3 — how a headcount band was arrived at, in words, beside the band. R-02 drops a company
+ * on this field, so "they printed it" and "we counted their job ads" must not look identical.
+ */
+const SIZE_SOURCE_NOTE: Record<string, string> = {
+  stated: "stated by the company on its own site",
+  inferred: "estimated from the number of open roles — not a figure they published",
+  hunter: "from Hunter's company metadata, not from their site",
+};
+
 function EvidenceFact({
   label,
   value,
   quote,
+  provenance,
 }: {
   label: string;
   value: string | null;
   quote: { quote: string; url: string } | null;
+  /** Optional sentence explaining where the value came from when there is no quote to show. */
+  provenance?: string | null;
 }) {
   return (
     <div className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2">
@@ -208,6 +255,7 @@ function EvidenceFact({
         <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
           {label}
         </span>
+        {/* An inferred value never gets a quote chip: there is no sentence behind it. */}
         {quote ? <QuoteChip url={quote.url} /> : <AiChip />}
       </div>
       <p className="mt-0.5 font-mono text-xs text-ink-100">{value ?? <NotStated />}</p>
@@ -215,6 +263,9 @@ function EvidenceFact({
         <p className="mt-1 border-l-2 border-ink-700 pl-2 text-[11px] leading-snug text-ink-300">
           “{quote.quote}”
         </p>
+      ) : null}
+      {provenance && value ? (
+        <p className="mt-1 text-[11px] leading-snug text-ink-400">{provenance}</p>
       ) : null}
     </div>
   );
@@ -281,6 +332,14 @@ function LoopTraceSection({
           One row per iteration. The loop stops when every field is filled or after 4 extra
           fetches — whichever comes first. {used}/4 used here.
         </p>
+        {/* §2.1 — a judge must be able to see which fetches were spent by design. */}
+        <p className="text-xs leading-relaxed text-ink-400">
+          The cap is still 4. What changed is who spends it: the first two are{" "}
+          <span className="font-semibold text-ink-200">reserved</span> — one for the security or
+          trust page, one for careers — and only the remaining two are the model&rsquo;s to
+          choose. The page carrying S-01, S-02 and S-03 is not something a model gets to decide
+          to skip.
+        </p>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-xs">
@@ -324,8 +383,16 @@ function LoopTraceSection({
                       {t.chosen_reason ?? <NotStated />}
                     </td>
                     <td className="py-1.5 pr-3">
-                      <Badge tone={t.chosen_by === "ai" ? "accent" : "neutral"}>
-                        {t.chosen_by}
+                      <Badge
+                        tone={
+                          t.chosen_by === "ai"
+                            ? "accent"
+                            : t.chosen_by === "reserved"
+                              ? "send"
+                              : "neutral"
+                        }
+                      >
+                        {t.chosen_by === "reserved" ? "RESERVED" : t.chosen_by}
                       </Badge>
                     </td>
                     <td className="py-1.5 font-mono text-send">
@@ -345,10 +412,15 @@ function LoopTraceSection({
           <ul className="mt-2 space-y-1">
             {fetches.map((f, i) => (
               <li key={i} className="flex flex-wrap items-baseline gap-2">
-                <Badge tone={f.ok ? "send" : "drop"}>tier {f.tier}</Badge>
+                <Badge tone={f.ok ? "send" : "drop"}>
+                  {f.from_cache ? "cached" : `tier ${f.tier}`}
+                </Badge>
                 <span className="break-all font-mono text-[11px] text-ink-300">{f.url}</span>
                 <span className="text-[11px] text-ink-400">
-                  {f.status_code ?? "no status"} · {f.word_count} words
+                  {f.from_cache ? "served from page cache, no request made" : (f.status_code ?? "no status")} ·{" "}
+                  {f.word_count} words
+                  {/* §2.6a — the measured wait, not the nominal one. */}
+                  {f.delay_ms > 0 ? ` · polite: waited ${f.delay_ms}ms before this request` : ""}
                   {f.error ? ` · ${f.error}` : ""}
                 </span>
               </li>

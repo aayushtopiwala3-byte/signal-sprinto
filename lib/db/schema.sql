@@ -47,6 +47,16 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
 -- Reclaiming alone would retry a domain that always outlasts the handler forever, which is the
 -- same stuck board by a slower route. Counting claims lets the run give up and say why.
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+-- A headcount band that was counted from job listings and one a company printed about itself are
+-- not the same claim, and R-02 drops a company on either. Storing which one it was keeps the
+-- difference visible on the card instead of collapsing both into a bare band.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS size_source TEXT;
+-- Reserved fetch 1 (§2.1) always asks whether a security/trust page exists. The answer "no"
+-- is informative — a B2B SaaS company with no trust page at all is a different prospect from
+-- one with a page full of badges — so it is recorded rather than left as an absence the card
+-- cannot distinguish from "we never looked".
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS security_page_checked BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS security_page_url TEXT;
 
 CREATE INDEX IF NOT EXISTS companies_run_idx ON companies (run_id);
 CREATE UNIQUE INDEX IF NOT EXISTS companies_run_domain_idx
@@ -68,6 +78,12 @@ CREATE TABLE IF NOT EXISTS fetches (
   fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS fetches_company_idx ON fetches (company_id);
+-- Set when the row was served from `page_cache` and no request reached the company's server.
+-- Health counts these against live fetches, which is the deck's third cost dial made visible.
+ALTER TABLE fetches ADD COLUMN IF NOT EXISTS from_cache BOOLEAN NOT NULL DEFAULT false;
+-- Milliseconds actually spent waiting before this request, to honour our own politeness floor
+-- and any Crawl-delay the site published. Stored so the badge shows a measurement, not a claim.
+ALTER TABLE fetches ADD COLUMN IF NOT EXISTS delay_ms INTEGER NOT NULL DEFAULT 0;
 
 -- The agent loop's audit trail. Rendered on the company page as
 -- "How it decided what to read next" — the visible difference from a fixed pipeline.
@@ -200,6 +216,17 @@ CREATE TABLE IF NOT EXISTS ai_cache (
   tokens_in  INTEGER NOT NULL DEFAULT 0,
   tokens_out INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Page cache (§2.6b). Cleaned text only — never raw HTML, which we do not keep anywhere.
+-- A hit saves the company's server a request and saves us the tokens; it does NOT refund a
+-- loop fetch, because the four-fetch budget counts questions asked, not money spent.
+CREATE TABLE IF NOT EXISTS page_cache (
+  url        TEXT PRIMARY KEY,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  tier       INTEGER NOT NULL DEFAULT 1,
+  clean_text TEXT NOT NULL,
+  word_count INTEGER NOT NULL DEFAULT 0
 );
 
 -- Hunter Domain Search cache, so repeat domains never cost a second credit (§4.1, T-02).

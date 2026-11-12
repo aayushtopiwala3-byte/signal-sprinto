@@ -35,6 +35,7 @@ export type CompanyRow = {
   cert_status_evidence_json: string | null;
   size_band: string | null;
   size_band_evidence_json: string | null;
+  size_source: string | null;
   pressure_signals_json: string | null;
   is_services: boolean | null;
   verdict: string | null;
@@ -49,7 +50,19 @@ export type CompanyRow = {
   created_at: string;
   claimed_at: string | null;
   attempts: number;
+  security_page_checked: boolean;
+  security_page_url: string | null;
 };
+
+/** §2.1 — records the outcome of reserved fetch 1, including a clean "there isn't one". */
+export async function saveSecurityPage(
+  companyId: string,
+  url: string | null,
+): Promise<void> {
+  await sql`
+    UPDATE companies SET security_page_checked = true, security_page_url = ${url}
+    WHERE id = ${companyId}`;
+}
 
 const parse = <T>(json: string | null, fallback: T): T => {
   if (!json) return fallback;
@@ -200,6 +213,9 @@ export function evidenceFromRow(row: CompanyRow): EvidenceMap {
     cert_status_evidence: parse(row.cert_status_evidence_json, null),
     size_band: row.size_band as EvidenceMap["size_band"],
     size_band_evidence: parse(row.size_band_evidence_json, null),
+    // A band with no recorded source predates this column. Reading it back as `stated` would
+    // invent provenance for it, so it stays null and renders as unattributed.
+    size_source: (row.size_source as EvidenceMap["size_source"]) ?? null,
     pressure_signals: parse(row.pressure_signals_json, null),
     is_services: row.is_services,
   };
@@ -214,6 +230,7 @@ export async function saveEvidence(companyId: string, evidence: EvidenceMap): Pr
       cert_status_evidence_json = ${evidence.cert_status_evidence ? JSON.stringify(evidence.cert_status_evidence) : null},
       size_band = ${evidence.size_band},
       size_band_evidence_json = ${evidence.size_band_evidence ? JSON.stringify(evidence.size_band_evidence) : null},
+      size_source = ${evidence.size_band === null ? null : evidence.size_source},
       pressure_signals_json = ${evidence.pressure_signals ? JSON.stringify(evidence.pressure_signals) : null},
       is_services = ${evidence.is_services}
     WHERE id = ${companyId}`;
@@ -266,6 +283,10 @@ export type FetchRow = {
   error: string | null;
   clean_text: string | null;
   fetched_at: string;
+  /** True when this row was served from `page_cache` and no request reached the company. */
+  from_cache: boolean;
+  /** Milliseconds waited to honour the politeness gap (§2.6a). 0 on a cache hit. */
+  delay_ms: number;
 };
 
 export async function insertFetch(input: {
@@ -277,11 +298,77 @@ export async function insertFetch(input: {
   ok: boolean;
   error: string | null;
   cleanText: string | null;
+  fromCache?: boolean;
+  delayMs?: number;
 }): Promise<void> {
   await sql`
-    INSERT INTO fetches (id, company_id, url, tier, status_code, word_count, ok, error, clean_text)
+    INSERT INTO fetches (id, company_id, url, tier, status_code, word_count, ok, error, clean_text,
+                         from_cache, delay_ms)
     VALUES (${newId("fe")}, ${input.companyId}, ${input.url}, ${input.tier}, ${input.statusCode},
-            ${input.wordCount}, ${input.ok}, ${input.error}, ${input.cleanText})`;
+            ${input.wordCount}, ${input.ok}, ${input.error}, ${input.cleanText},
+            ${input.fromCache ?? false}, ${input.delayMs ?? 0})`;
+}
+
+/* ------------------------------------------------------------- page cache */
+
+/**
+ * §2.6b. Seven days, because a company's security page does not change weekly and the deck's
+ * third cost dial is exactly this: "a company researched last week should cost nothing this
+ * week." A hit saves their server a request and saves us the tokens — it does not refund a
+ * loop fetch, which counts questions asked rather than money spent.
+ */
+export const PAGE_CACHE_MAX_AGE_DAYS = 7;
+
+export async function getCachedPage(
+  url: string,
+): Promise<{ clean_text: string; tier: number } | null> {
+  try {
+    const rows = await sql<{ clean_text: string; tier: number }>`
+      SELECT clean_text, tier FROM page_cache
+      WHERE url = ${url}
+        AND fetched_at > now() - make_interval(days => ${PAGE_CACHE_MAX_AGE_DAYS})`;
+    return rows[0] ?? null;
+  } catch {
+    // A cache failure is a miss, never an error the pipeline has to handle.
+    return null;
+  }
+}
+
+export async function putCachedPage(input: {
+  url: string;
+  tier: number;
+  clean_text: string;
+  word_count: number;
+}): Promise<void> {
+  try {
+    await sql`
+      INSERT INTO page_cache (url, tier, clean_text, word_count, fetched_at)
+      VALUES (${input.url}, ${input.tier}, ${input.clean_text}, ${input.word_count}, now())
+      ON CONFLICT (url) DO UPDATE
+        SET clean_text = EXCLUDED.clean_text,
+            tier = EXCLUDED.tier,
+            word_count = EXCLUDED.word_count,
+            fetched_at = now()`;
+  } catch {
+    // Caching is an optimisation.
+  }
+}
+
+/** Health's `N served from cache · M live` counter, measured rather than estimated. */
+export async function cacheCounts(runId: string): Promise<{ cached: number; live: number }> {
+  const rows = await sql<{ from_cache: boolean; n: number }>`
+    SELECT f.from_cache, COUNT(*) AS n
+    FROM fetches f
+    JOIN companies c ON c.id = f.company_id
+    WHERE c.run_id = ${runId} AND f.ok = true
+    GROUP BY f.from_cache`;
+  let cached = 0;
+  let live = 0;
+  for (const r of rows) {
+    if (r.from_cache) cached += Number(r.n);
+    else live += Number(r.n);
+  }
+  return { cached, live };
 }
 
 export async function listFetches(companyId: string): Promise<FetchRow[]> {
