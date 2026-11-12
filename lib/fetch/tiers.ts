@@ -75,7 +75,7 @@ export type FetchOutcome = {
   /** The tier that produced `page`. */
   tier: 1 | 2 | null;
   /** Set when `page` is null — a named reason, never a silent empty. */
-  reason_code: "thin_content" | "fetch_failed" | null;
+  reason_code: "thin_content" | "fetch_failed" | "not_found" | null;
   reason_text: string | null;
   /** True when `page` came from `page_cache` and no request left this machine. */
   cached: boolean;
@@ -122,6 +122,19 @@ async function fetchTiers(
 
   // --- Tier 1 ---------------------------------------------------------------
   let tier1Page: CleanedPage | null = null;
+  /**
+   * Set when tier 1 got a definitive "this page does not exist". The reader tier fetches the
+   * same URL through a proxy; it cannot conjure a page the origin says is absent, so escalating
+   * a 404 buys nothing and costs a full reader timeout.
+   *
+   * Measured, not theorised: reserving two fetch slots (§2.1) means probing up to three
+   * conventional paths per slot, and a company with no `/security` and no `/trust` was spending
+   * up to six reader calls on URLs that had already returned 404. That is what pushed three of
+   * ten domains past the 60s handler limit on the first Phase 1 run. Escalation still happens
+   * for 2xx-but-thin (a JavaScript app) and for 403/429 (a bot block) — those are cases where
+   * the content exists and tier 1 simply could not see it.
+   */
+  let notFound = false;
   try {
     const { status, body } = await get(url, timeoutMs);
     if (status >= 200 && status < 300) {
@@ -139,6 +152,7 @@ async function fetchTiers(
       }
       tier1Page = page;
     } else {
+      if (status === 404 || status === 410) notFound = true;
       attempts.push({
         url,
         tier: 1,
@@ -160,6 +174,15 @@ async function fetchTiers(
   }
 
   // --- Tier 2 ---------------------------------------------------------------
+  if (notFound) {
+    return {
+      attempts,
+      page: null,
+      tier: null,
+      reason_code: "not_found",
+      reason_text: `${url} returned 404. The reader tier fetches the same URL, so it was not tried — the page does not exist rather than being unreadable.`,
+    };
+  }
   if (!readerEnabled) {
     return tier1Page && tier1Page.words > 0
       ? { attempts, page: tier1Page, tier: 1, reason_code: null, reason_text: null }

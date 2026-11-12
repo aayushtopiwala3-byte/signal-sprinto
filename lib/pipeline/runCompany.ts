@@ -7,6 +7,7 @@ import {
   RESERVED_SLOTS,
   RESERVED_MIN_WORDS,
   driveableFields,
+  orderByPathPriority,
   slotCandidates,
   slotFor,
   type ReservedSlot,
@@ -303,14 +304,18 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
 
       if (isReserved) {
         const reserved = slot as ReservedSlot;
-        // Links the site actually publishes are tried before conventional guesses: a real link
-        // is evidence the page exists, a guess is not.
+        // A site-published link is evidence the page exists where a guessed path is not, so it
+        // still goes in first — but only as a tie-break. Path priority wins, because every
+        // footer links a privacy policy and `/privacy-policy` matches `/privacy`, which was
+        // enough to spend the security slot on four of eight companies without ever opening
+        // the `/trust` pages they publish.
         const linked = candidates
           .filter((c) => reserved.paths.some((p) => c.url.toLowerCase().includes(p)))
           .map((c) => c.url);
-        const probes = [
-          ...new Set([...linked, ...slotCandidates(domain, reserved, fetchedUrls)]),
-        ].slice(0, MAX_SLOT_PROBES);
+        const probes = orderByPathPriority(
+          [...linked, ...slotCandidates(domain, reserved, fetchedUrls)],
+          reserved,
+        ).slice(0, MAX_SLOT_PROBES);
 
         const tried: string[] = [];
         for (const probe of probes) {

@@ -201,6 +201,12 @@ export function cleanHtml(input: string, opts: { isMarkdown?: boolean } = {}): C
   }
 
   s = decodeEntities(s);
+  // Postgres `text` cannot hold a NUL byte — it rejects the whole INSERT with "invalid byte
+  // sequence for encoding UTF8: 0x00". atlan.com serves one, and it crashed the company mid-run
+  // with a database error standing where a verdict should have been. Other C0 controls are
+  // stripped with it: none of them carry meaning in page text, and a quote containing one could
+  // never be matched against the live page anyway.
+  s = s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, " ");
   s = s.replace(/[ \t\u00a0]+/g, " ");
 
   const blocks: string[] = [];

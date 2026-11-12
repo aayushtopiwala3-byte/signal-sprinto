@@ -3,6 +3,7 @@ import {
   RESERVED_SLOTS,
   SIZE_DISCRETIONARY_BUDGET,
   driveableFields,
+  orderByPathPriority,
   slotCandidates,
   slotFor,
   slotKind,
@@ -47,6 +48,42 @@ describe("the fetch budget is allocated, not pooled", () => {
 
     const afterSecurity = slotCandidates("example.com", slot, ["https://www.example.com/security/"]);
     expect(afterSecurity).not.toContain("https://example.com/security");
+  });
+
+  it("never lets a linked /privacy-policy outrank a guessed /security", () => {
+    // The first live run after reserving the slots spent the security fetch on /privacy-policy
+    // for four of eight companies, including whatfix and rocketlane, both of which publish a
+    // 700+ word /trust page that was never opened. Every footer links a privacy policy, and
+    // "/privacy-policy" contains "/privacy" — the last entry in SECURITY_PATHS. Site-published
+    // links still go first, but only within the same path rank.
+    const slot = RESERVED_SLOTS[0];
+    const ordered = orderByPathPriority(
+      [
+        "https://whatfix.com/privacy-policy", // linked from the footer
+        "https://whatfix.com/security", // a guess
+        "https://whatfix.com/trust", // a guess, and the page that actually exists
+      ],
+      slot,
+    );
+    expect(ordered[0]).toBe("https://whatfix.com/security");
+    expect(ordered[1]).toBe("https://whatfix.com/trust");
+    expect(ordered[2]).toBe("https://whatfix.com/privacy-policy");
+  });
+
+  it("keeps a site-published link ahead of a guess at the same path", () => {
+    const ordered = orderByPathPriority(
+      ["https://acme.com/en/trust", "https://acme.com/trust"],
+      RESERVED_SLOTS[0],
+    );
+    expect(ordered[0]).toBe("https://acme.com/en/trust");
+  });
+
+  it("ranks a URL matching no path last rather than dropping it", () => {
+    const ordered = orderByPathPriority(
+      ["https://acme.com/about", "https://acme.com/compliance"],
+      RESERVED_SLOTS[0],
+    );
+    expect(ordered).toEqual(["https://acme.com/compliance", "https://acme.com/about"]);
   });
 });
 
