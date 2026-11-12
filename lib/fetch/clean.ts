@@ -60,13 +60,20 @@ export function wordCount(text: string): number {
   return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
 }
 
+/**
+ * One same-host link found on a page. Named rather than inline because it now travels further
+ * than the cleaner: `page_cache` persists these alongside the text (§11), so the cache layer and
+ * the fetch tiers both need to name the shape.
+ */
+export type PageLink = { url: string; label: string };
+
 export type CleanedPage = {
   /** Cleaned, de-duplicated, capped text — the only thing an AI call ever sees. */
   text: string;
   /** Word count of the cleaned text, which drives the tier-2 threshold. */
   words: number;
   /** Absolute, same-host candidate links for AI-2's shortlist. */
-  links: { url: string; label: string }[];
+  links: PageLink[];
   /**
    * Links that look like individual job postings, counted by `lib/size/infer.ts`. Kept separate
    * from `links` because these may be off-host (Greenhouse, Lever, Ashby) and AI-2 must never be
@@ -78,7 +85,7 @@ export type CleanedPage = {
 };
 
 /** Pull candidate links before the markup is destroyed. Same host only — we read their site. */
-export function extractLinks(html: string, baseUrl: string): { url: string; label: string }[] {
+export function extractLinks(html: string, baseUrl: string): PageLink[] {
   let base: URL;
   try {
     base = new URL(baseUrl);

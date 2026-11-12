@@ -65,6 +65,93 @@ describe("a 404 does not escalate to the reader tier", () => {
   });
 });
 
+describe("a cache hit returns the page a cold fetch returned (§11)", () => {
+  /** The real `page_cache` round-trip: everything goes through JSON on the way to Postgres. */
+  function memoryCache() {
+    const store = new Map<string, string>();
+    return {
+      rows: store,
+      get: async (url: string) => {
+        const raw = store.get(url);
+        return raw === undefined
+          ? null
+          : (JSON.parse(raw) as {
+              clean_text: string;
+              tier: number;
+              links: { url: string; label: string }[];
+              job_links: string[];
+            });
+      },
+      put: async (row: {
+        url: string;
+        tier: number;
+        clean_text: string;
+        word_count: number;
+        links: { url: string; label: string }[];
+        job_links: string[];
+      }) => {
+        store.set(
+          row.url,
+          JSON.stringify({
+            clean_text: row.clean_text,
+            tier: row.tier,
+            links: row.links,
+            job_links: row.job_links,
+          }),
+        );
+      },
+    };
+  }
+
+  const CAREERS = `<html><body><main>
+    <h1>Careers at Nected</h1>
+    <p>${"We are hiring across engineering, design and go to market teams this quarter. ".repeat(20)}</p>
+    <a href="/use-cases/compliance-and-automation">Compliance and automation</a>
+    <a href="/jobs/senior-backend-engineer">Senior Backend Engineer</a>
+    <a href="/jobs/security-engineer">Security Engineer</a>
+  </main></body></html>`;
+
+  it("serves the same links and job links it served cold", async () => {
+    // nected.ai scored SEND at 70 on a cold run and HOLD at 15 on a cached one. `page_cache`
+    // stored `clean_text` alone, so a hit returned a page with no links — and nected's only
+    // route to S-02 is a compliance page linked from its site, never a guessable path.
+    const cache = memoryCache();
+    stubFetch(() => ({ status: 200, body: CAREERS }));
+    const url = "https://nected.ai/careers";
+
+    const cold = await fetchPage(url, { delayMs: 0, cache });
+    const warm = await fetchPage(url, { delayMs: 0, cache });
+
+    expect(cold.cached).toBe(false);
+    expect(warm.cached).toBe(true);
+    expect(warm.page?.links).toEqual(cold.page?.links);
+    expect(warm.page?.job_links).toEqual(cold.page?.job_links);
+    expect(warm.page?.text).toBe(cold.page?.text);
+
+    // Not a vacuous pass: the cold fetch really did find the link the verdict turned on.
+    expect(cold.page?.links.map((l) => l.url)).toContain(
+      "https://nected.ai/use-cases/compliance-and-automation",
+    );
+    expect(cold.page?.job_links.length).toBeGreaterThan(0);
+  });
+
+  it("treats a row written before link caching as a miss, so it repairs itself", async () => {
+    // `getCachedPage` returns null when `links_json IS NULL`. Serving such a row would keep a
+    // lossy hit alive for the rest of the TTL; refetching costs one request and fixes the row.
+    const cache = memoryCache();
+    const seen = stubFetch(() => ({ status: 200, body: CAREERS }));
+    const url = "https://nected.ai/careers";
+
+    await fetchPage(url, { delayMs: 0, cache });
+    cache.rows.clear(); // what a NULL links_json row looks like to the caller: nothing
+    const refetched = await fetchPage(url, { delayMs: 0, cache });
+
+    expect(seen).toHaveLength(2);
+    expect(refetched.cached).toBe(false);
+    expect(refetched.page?.job_links.length).toBeGreaterThan(0);
+  });
+});
+
 describe("control bytes never reach the database", () => {
   it("strips the NUL that crashed atlan.com mid-run", () => {
     // Postgres rejects the whole INSERT with `invalid byte sequence for encoding "UTF8": 0x00`,

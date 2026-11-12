@@ -1,4 +1,5 @@
 import { sql, one, newId } from "@/lib/db/client";
+import type { PageLink } from "@/lib/fetch/clean";
 import {
   DEFAULT_SWITCHES,
   DEFAULT_WEIGHTS,
@@ -319,15 +320,41 @@ export async function insertFetch(input: {
  */
 export const PAGE_CACHE_MAX_AGE_DAYS = 7;
 
+/**
+ * A hit must restore everything the live fetch produced, links included.
+ *
+ * Caching only `clean_text` made the cache change verdicts. nected.ai publishes no `/security`
+ * and no `/trust`, so the only route it has to S-02 is a compliance page linked from its
+ * homepage — and link extraction needs the raw HTML, which we deliberately do not store. On a
+ * cold run nected reached SEND at 70; on the cached run the same domain scored 15 and held,
+ * because the homepage came back as text with no links attached. Same input, different verdict,
+ * which §11 does not allow.
+ *
+ * `links_json` is nullable on purpose: NULL means the row predates link caching, and such a row
+ * is treated as a miss so it refetches and repopulates. That is self-healing, where a `'[]'`
+ * default would have quietly preserved the bug for the life of the TTL.
+ */
 export async function getCachedPage(
   url: string,
-): Promise<{ clean_text: string; tier: number } | null> {
+): Promise<{ clean_text: string; tier: number; links: PageLink[]; job_links: string[] } | null> {
   try {
-    const rows = await sql<{ clean_text: string; tier: number }>`
-      SELECT clean_text, tier FROM page_cache
+    const rows = await sql<{
+      clean_text: string;
+      tier: number;
+      links_json: string | null;
+      job_links_json: string | null;
+    }>`
+      SELECT clean_text, tier, links_json, job_links_json FROM page_cache
       WHERE url = ${url}
         AND fetched_at > now() - make_interval(days => ${PAGE_CACHE_MAX_AGE_DAYS})`;
-    return rows[0] ?? null;
+    const row = rows[0];
+    if (!row || row.links_json === null) return null;
+    return {
+      clean_text: row.clean_text,
+      tier: row.tier,
+      links: JSON.parse(row.links_json) as PageLink[],
+      job_links: JSON.parse(row.job_links_json ?? "[]") as string[],
+    };
   } catch {
     // A cache failure is a miss, never an error the pipeline has to handle.
     return null;
@@ -339,15 +366,20 @@ export async function putCachedPage(input: {
   tier: number;
   clean_text: string;
   word_count: number;
+  links: PageLink[];
+  job_links: string[];
 }): Promise<void> {
   try {
     await sql`
-      INSERT INTO page_cache (url, tier, clean_text, word_count, fetched_at)
-      VALUES (${input.url}, ${input.tier}, ${input.clean_text}, ${input.word_count}, now())
+      INSERT INTO page_cache (url, tier, clean_text, word_count, links_json, job_links_json, fetched_at)
+      VALUES (${input.url}, ${input.tier}, ${input.clean_text}, ${input.word_count},
+              ${JSON.stringify(input.links)}, ${JSON.stringify(input.job_links)}, now())
       ON CONFLICT (url) DO UPDATE
         SET clean_text = EXCLUDED.clean_text,
             tier = EXCLUDED.tier,
             word_count = EXCLUDED.word_count,
+            links_json = EXCLUDED.links_json,
+            job_links_json = EXCLUDED.job_links_json,
             fetched_at = now()`;
   } catch {
     // Caching is an optimisation.

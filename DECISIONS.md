@@ -371,3 +371,76 @@ cannot be read cannot demonstrate a rule about what it is. zerodha.com is equall
 B2B SaaS (a retail stock brokerage) and both its robots.txt and homepage return 200 with ~950
 clean words. swiggy.com (202, 0 words) and nykaa.com (52 words) were tried first and rejected on
 the same ground. Verified by running them, not assumed.
+
+### D-35 · Security-page candidates rank by path strength, not by who linked them [§2.1]
+Found by running the sample set, twice, in opposite directions.
+
+The reserved security slot originally probed site-published links before conventional guesses,
+on the reasoning that a real link is evidence the page exists and a guess is not. That is true,
+and it still cost four of eight companies their security page: every footer on the web links a
+privacy policy, `/privacy-policy` matches the `/privacy` entry in `SECURITY_PATHS`, and a long
+privacy policy clears the 200-word floor and wins the slot on the first probe. whatfix and
+rocketlane both publish a `/trust` page of 700+ words that was never opened. The slot was spent
+and S-01 and S-02 — the signals it exists to reach — stayed unreachable.
+
+Inverting the rule so path priority beat link provenance fixed those two and broke nected.ai,
+which publishes neither `/security` nor `/trust` but does link a compliance page. Three guessed
+paths exhausted its probe budget before that link was reached, and nected fell from SEND at 70
+to HOLD at 15.
+
+Both observations were correct and they were about different things. The offender was `/privacy`
+specifically: it belongs among the candidates because a privacy policy occasionally names a
+certification, but it carries no badge and no certification status, so neither S-01 nor S-02 can
+ever fire from one. `WEAK_SECURITY_PATHS` demotes it below every other candidate, linked or
+guessed, and provenance goes back to breaking ties among equals.
+
+The general shape is worth naming, because it is the same one as D-27: a rule that looks like it
+is about *where to look* was really about *what counts as having looked*.
+
+### D-36 · A 404 does not escalate to the reader tier [§2.6a, §0.1]
+Three of ten domains exceeded the 60s handler on the first Phase 1 run. §0.1 anticipated this and
+named the lever — lower the per-fetch timeout from 20s to 12s before touching
+`MAX_EXTRA_FETCHES`. The premise turned out not to hold: there is no 20s timeout. Tier 1 is 8s
+and tier 2 is 12s, both already at or under the target, and the 20s figure is the two of them
+added together on a single page.
+
+The actual cause was that they were being added together on pages that did not exist. Reserving
+two slots means probing conventional paths, a company with no `/security` and no `/trust` misses
+several of them, and a 404 fell through to tier 2 — which fetches the same URL through a proxy
+and cannot conjure a page the origin says is absent. Up to six reader timeouts per company, all
+spent confirming something tier 1 had already established.
+
+404 and 410 now stop at tier 1. 403 and 2xx-but-thin still escalate, because those are the cases
+the reader tier exists for: the content is there and tier 1 could not see it. This made a missed
+guess cheap enough to raise `MAX_SLOT_PROBES` from three to four rather than cut it.
+
+`MAX_EXTRA_FETCHES` was not touched, and did not need to be.
+
+### D-37 · Control bytes are stripped during cleaning [§2.3]
+atlan.com ended the first Phase 1 run with `invalid byte sequence for encoding "UTF8": 0x00`
+standing on the board where a verdict belonged. It serves a NUL byte; Postgres `text` columns
+cannot hold one and reject the whole INSERT. C0 controls are now removed in `cleanHtml`, where
+every tier's output passes through. None of them carry meaning in page text, and a quote
+containing one could not be matched against the live page anyway — so stripping them costs no
+evidence and removes a class of crash that presents as a missing verdict rather than as an error.
+
+### D-38 · The page cache stores links, because a verdict may not depend on cache state [§2.6b, §11]
+`page_cache` originally stored `clean_text` and nothing else, and the comment above it defended
+the choice: links and job counts are cheap to recompute, but only from raw HTML, which we
+deliberately do not keep. A cached page therefore contributed text and nothing else.
+
+That is a determinism bug, not a storage trade-off. §11 requires the same input to produce the
+same verdict, and nected.ai produced **SEND at 70 on a cold run and HOLD at 15 on a cached one**.
+It publishes no `/security` and no `/trust`; its only route to S-02 is a compliance page linked
+from its own site. Serve that page from cache with an empty link list and the route disappears.
+The same loss silently disabled `inferSize`'s job-link source on any cached careers page, so a
+headcount that was measurable cold became `not stated` warm.
+
+Links are part of what a fetch *found*, not a detail of how it was *rendered*, so they are now
+persisted beside the text in `links_json` and `job_links_json`. Both columns are nullable on
+purpose: NULL marks a row written before link caching existed, and `getCachedPage` treats that as
+a miss. Such a row refetches once and repairs itself, rather than serving a lossy hit for the
+remaining seven days of its TTL.
+
+What the cache was always for is unaffected — a hit still skips the request to the company's
+server and the tokens spent re-reading the page. It still does not refund a loop fetch (D-31).

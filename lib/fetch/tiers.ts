@@ -1,5 +1,5 @@
 import { USER_AGENT } from "@/lib/fetch/robots";
-import { cleanPage, wordCount, type CleanedPage } from "@/lib/fetch/clean";
+import { cleanPage, wordCount, type CleanedPage, type PageLink } from "@/lib/fetch/clean";
 
 /**
  * ② The three-tier fetch (§7.1).
@@ -268,8 +268,22 @@ export async function fetchPage(
     delayMs?: number;
     /** Injected by the pipeline. Absent in tests, which then exercise the live path. */
     cache?: {
-      get: (url: string) => Promise<{ clean_text: string; tier: number } | null>;
-      put: (row: { url: string; tier: number; clean_text: string; word_count: number }) => Promise<void>;
+      get: (
+        url: string,
+      ) => Promise<{
+        clean_text: string;
+        tier: number;
+        links: PageLink[];
+        job_links: string[];
+      } | null>;
+      put: (row: {
+        url: string;
+        tier: number;
+        clean_text: string;
+        word_count: number;
+        links: PageLink[];
+        job_links: string[];
+      }) => Promise<void>;
     };
   } = {},
 ): Promise<FetchOutcome> {
@@ -279,11 +293,12 @@ export async function fetchPage(
       const page: CleanedPage = {
         text: hit.clean_text,
         words: wordCount(hit.clean_text),
-        // Links and job counts are not cached: they are cheap to recompute but only from the
-        // raw HTML, which we deliberately do not store. A cached page therefore contributes
-        // text and nothing else, and `inferSize` sees no job links for it.
-        links: [],
-        job_links: [],
+        // Links are cached alongside the text because they are part of what the fetch found,
+        // not a detail of how it was rendered. Serving text alone made the cache change
+        // verdicts: nected.ai's only route to S-02 is a compliance page linked from its
+        // homepage, and a cached homepage with no links dropped it from SEND to HOLD.
+        links: hit.links,
+        job_links: hit.job_links,
         title: null,
       };
       return {
@@ -316,6 +331,8 @@ export async function fetchPage(
       tier: core.tier ?? 1,
       clean_text: core.page.text,
       word_count: core.page.words,
+      links: core.page.links,
+      job_links: core.page.job_links,
     });
   }
 

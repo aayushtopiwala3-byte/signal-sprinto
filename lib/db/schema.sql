@@ -229,6 +229,15 @@ CREATE TABLE IF NOT EXISTS page_cache (
   word_count INTEGER NOT NULL DEFAULT 0
 );
 
+-- Links are part of what a fetch produced, not a detail of how it was rendered: the reserved
+-- security slot probes site-published links before conventional guesses, and `inferSize` counts
+-- job links. Caching text alone let a cached run reach a different verdict from a cold one,
+-- which §11 does not allow. Nullable on purpose — NULL marks a row written before link caching
+-- existed, and `getCachedPage` treats that as a miss so the row refetches and repairs itself
+-- instead of serving a lossy hit for the rest of the TTL.
+ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS links_json TEXT;
+ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS job_links_json TEXT;
+
 -- Hunter Domain Search cache, so repeat domains never cost a second credit (§4.1, T-02).
 CREATE TABLE IF NOT EXISTS hunter_cache (
   domain        TEXT PRIMARY KEY,
