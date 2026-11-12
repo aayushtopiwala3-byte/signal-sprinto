@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   RESERVED_SLOTS,
   SIZE_DISCRETIONARY_BUDGET,
+  WEAK_SECURITY_PATHS,
   driveableFields,
   orderByPathPriority,
   slotCandidates,
@@ -70,12 +71,16 @@ describe("the fetch budget is allocated, not pooled", () => {
     expect(ordered[2]).toBe("https://whatfix.com/privacy-policy");
   });
 
-  it("keeps a site-published link ahead of a guess at the same path", () => {
+  it("keeps a site-published link ahead of a guess of equal strength", () => {
+    // The opposite failure, and just as real: demoting every linked URL below every guess cost
+    // nected.ai its compliance page — it publishes no /security and no /trust, and that link
+    // was the only route to S-02 it had.
+    const linked = "https://www.nected.ai/use-cases/compliance-and-automation";
     const ordered = orderByPathPriority(
-      ["https://acme.com/en/trust", "https://acme.com/trust"],
+      [linked, "https://nected.ai/security", "https://nected.ai/trust"],
       RESERVED_SLOTS[0],
     );
-    expect(ordered[0]).toBe("https://acme.com/en/trust");
+    expect(ordered[0]).toBe(linked);
   });
 
   it("ranks a URL matching no path last rather than dropping it", () => {
@@ -84,6 +89,22 @@ describe("the fetch budget is allocated, not pooled", () => {
       RESERVED_SLOTS[0],
     );
     expect(ordered).toEqual(["https://acme.com/compliance", "https://acme.com/about"]);
+  });
+
+  it("puts /privacy below everything, linked or guessed", () => {
+    expect(WEAK_SECURITY_PATHS.has("/privacy")).toBe(true);
+    const ordered = orderByPathPriority(
+      [
+        "https://acme.com/privacy-policy",
+        "https://acme.com/legal/security",
+        "https://acme.com/about",
+      ],
+      RESERVED_SLOTS[0],
+    );
+    // A page matching nothing we asked for still outranks a privacy policy only if it is not
+    // weak — here /about matches no path at all, so the policy is merely not first.
+    expect(ordered[0]).toBe("https://acme.com/legal/security");
+    expect(ordered.indexOf("https://acme.com/privacy-policy")).toBeGreaterThan(0);
   });
 });
 

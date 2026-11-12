@@ -152,10 +152,14 @@ async function recordFetch(companyId: string, outcome: FetchOutcome): Promise<vo
  *
  * A slot is one *question* — "do they publish a security page?" — and conventional paths are
  * guesses at where the answer lives, so a miss is not a failed fetch so much as a wrong guess.
- * Three keeps the common cases (`/security`, `/trust`, `/compliance`) reachable without letting
- * a site with none of them eat the whole handler.
+ *
+ * Raised from three once a 404 stopped escalating to the reader tier (`lib/fetch/tiers.ts`). A
+ * missed guess used to cost a full reader timeout; it now costs one quick HTTP request, which
+ * is what made three affordable in the first place and makes four affordable now. Four is the
+ * number that keeps a site-published link reachable behind the three conventional paths that
+ * precede it — nected.ai's compliance page sits exactly there, and at three it was cut off.
  */
-const MAX_SLOT_PROBES = 3;
+const MAX_SLOT_PROBES = 4;
 
 export async function runCompany(companyId: string): Promise<RunCompanyResult> {
   const startedAt = Date.now();

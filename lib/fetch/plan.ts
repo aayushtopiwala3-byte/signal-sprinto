@@ -49,6 +49,17 @@ export const SECURITY_PATHS = [
 ];
 
 /**
+ * Paths that are worth reading only if nothing better exists.
+ *
+ * `/privacy` earns its place in `SECURITY_PATHS` because a privacy policy occasionally names a
+ * certification, but it is categorically not a trust page: no badge, no certification status,
+ * so neither S-01 nor S-02 can fire from one. It also matches `/privacy-policy`, which every
+ * footer on the web links — so left at equal rank it wins the slot on the first probe and the
+ * real `/trust` page is never opened. Four of eight companies did exactly that.
+ */
+export const WEAK_SECURITY_PATHS = new Set(["/privacy"]);
+
+/**
  * Reserved fetch 2 — the careers page. It earns the slot twice over: S-03 (first compliance
  * hire) reads it, and so does the headcount inference in `lib/size/infer.ts`. The deck says the
  * same thing — it answers headcount, seniority and often funding in a single request.
@@ -114,31 +125,32 @@ export function driveableFields(
 }
 
 /**
- * Rank a set of candidate URLs by which of the slot's paths they match, not by the order a site
- * happens to list them.
+ * Order candidate URLs for a reserved slot. Two tiers, and provenance decides within a tier.
  *
- * This is a measured fix, not a tidy-up. The first live run after reserving the slots resolved
- * the security page to `/privacy-policy` on four of eight companies — including whatfix and
- * rocketlane, both of which publish a real `/trust` page with over 700 words that was never
- * opened. The cause: links the site publishes were probed before conventional guesses (a real
- * link is evidence the page exists), every footer on the web links a privacy policy, and
- * `/privacy-policy` contains `/privacy`, which is the last entry in `SECURITY_PATHS`. A long
- * privacy policy then passed the word floor and won the slot on the first probe.
+ * Both halves of this were measured rather than reasoned, and in opposite directions.
  *
- * A privacy policy is not a trust page. It does not carry a SOC 2 badge or a certification
- * status, so S-01 and S-02 cannot fire from it — the slot was spent and the signals it exists
- * to reach were still unreachable. Path priority now outranks link provenance, and being
- * site-published only breaks ties within the same path.
+ * Probing site-published links before conventional guesses is right — a real link is evidence
+ * the page exists where a guess is not. nected.ai publishes no `/security` and no `/trust`, but
+ * does link a compliance page, and that link is the only reason S-02 ever fired for it.
+ *
+ * But at equal rank, a linked `/privacy-policy` beat a guessed `/trust` on four of eight
+ * companies, spending the slot on a page that can carry neither S-01 nor S-02. Demoting every
+ * linked URL below every guess then cost nected its compliance page, because three guessed
+ * paths exhausted the probe budget first.
+ *
+ * So the split is by *path strength*, not by provenance: a page that can carry a badge beats
+ * one that cannot, and being site-published breaks ties among equals.
  */
 export function orderByPathPriority(urls: readonly string[], slot: ReservedSlot): string[] {
-  const rank = (url: string): number => {
+  const tier = (url: string): number => {
     const lower = url.toLowerCase();
-    const i = slot.paths.findIndex((p) => lower.includes(p));
-    return i === -1 ? slot.paths.length : i;
+    const matched = slot.paths.find((p) => lower.includes(p));
+    if (matched === undefined) return 2; // matches nothing we asked for
+    return WEAK_SECURITY_PATHS.has(matched) ? 1 : 0;
   };
   return [...new Set(urls)]
-    .map((url, index) => ({ url, r: rank(url), index }))
-    .sort((a, b) => a.r - b.r || a.index - b.index)
+    .map((url, index) => ({ url, t: tier(url), index }))
+    .sort((a, b) => a.t - b.t || a.index - b.index)
     .map((c) => c.url);
 }
 
