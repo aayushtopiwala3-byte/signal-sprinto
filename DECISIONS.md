@@ -444,3 +444,63 @@ remaining seven days of its TTL.
 
 What the cache was always for is unaffected — a hit still skips the request to the company's
 server and the tokens spent re-reading the page. It still does not refund a loop fetch (D-31).
+
+### D-39 · R-23 fails closed, and names *why* a quote failed rather than just that it did [§3.1]
+The old validator asked one question — does this quote appear verbatim in the text we fetched —
+and four quotes from the first Phase 1 run passed it that should not have: an industry statistic
+about the SaaS market, a staff bio opening "Prior to Zipy…", a YouTube cookie banner, and a Jina
+Reader error page. All four are genuinely present. Verbatim is a test of *transcription*, not of
+*support*, and the gap between those two is exactly where a confident wrong email comes from.
+
+R-23 adds two tests to the verbatim one: the quote must mention the company, and it must contain
+a trigger term for the signal it was attached to. Two design points are worth recording.
+
+**Naming the company is necessary but not sufficient.** "Prior to Zipy, Vishalini led engineering
+at a healthcare company" does name Zipy, so a naive mention test passes it — while the sentence
+is about a *different* employer at a time *before* the company existed. Biographical and
+third-party attributions are therefore disqualified explicitly, not by hoping the name test
+catches them.
+
+**First person counts, but only on the company's own host.** "We are SOC 2 compliant" on their
+site is a mention; the same sentence on a vendor's blog is not, because the "we" is the vendor's.
+
+Three deliberate consequences:
+
+- **`tier` is optional on `FiredSignal` but absent means unsupported.** Detection runs before
+  anything has judged the evidence, so the field cannot be required at construction. A signal that
+  reaches the verdict without one scores 0. The failure direction is a Send that becomes a Hold,
+  never a Hold that becomes a Send.
+- **The tier is stored on the row, not recomputed.** Re-scoring from a slider must not refetch
+  pages (§5.5, T-22), so the tier decided at run time is read straight back from the database.
+- **An asserted claim is still shown.** Greyed, struck through, with the reason, because hiding it
+  would quietly recreate the thing R-23 exists to expose — the reader would see a lower score and
+  no explanation of what was found and rejected.
+
+The cost is real and was accepted rather than designed around: nected.ai's three signals all quote
+marketing copy that names no one, so a domain that scored SEND/70 under the old validator is
+expected to lose points under R-23. That is the check working. Loosening the mention test to
+protect a board count would be optimising the demo against the rule it is demonstrating.
+
+### D-40 · Fabrications are logged, because a block nobody can see cannot be told from no check [§3.2]
+`applyEvidenceTiers` drops fabricated signals — correctly: a quote on no page we fetched has
+nothing to link to. But dropped claims leave no trace, and §3.2's counter is the single artifact
+that proves the check runs at all. A counter that can only ever report the failures it happens to
+have kept is not evidence of anything.
+
+So the pipeline tiers with `tierAllSignals`, records every refusal to `evidence_blocks`, and only
+then filters. One table for all three kinds of claim, so Health is a single query rather than a
+union over three tables that each store their tier differently.
+
+Two details that keep the number honest:
+
+- **`produced` on a pain point.** Two slots are always returned, and an unfilled one is tiered
+  `fabricated` so the card renders `not stated`. It is not a fabrication the check caught, though —
+  the model stayed silent rather than invented — so it is excluded from the count. Padding the
+  counter with the model's silences would make the best artifact in the build a lie.
+- **Replace, not append, keyed on the company.** Re-running one domain restates its blocks instead
+  of doubling them. The counter describes the run as it currently stands, not the sum of every
+  attempt ever made at it.
+
+Editing a draft re-checks through `tierDraft`, not the older verbatim-only validator. Otherwise an
+edit would be a way around the support requirement: a hook downgraded to asserted at run time
+would come back sendable the moment anyone touched the body.

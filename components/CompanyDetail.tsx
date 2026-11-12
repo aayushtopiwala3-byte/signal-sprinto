@@ -286,28 +286,89 @@ function SignalsSection({ signals }: { signals: SignalRow[] }) {
             now — that is a finding, not a gap.
           </p>
         ) : (
-          signals.map((s) => (
-            <div
-              key={s.id}
-              className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={s.points > 0 ? "accent" : "neutral"}>{s.signal_id}</Badge>
-                <span className="text-xs text-ink-100">
-                  {SIGNAL_LABEL[s.signal_id as SignalId] ?? s.signal_id}
-                </span>
-                <span className="font-mono text-xs text-accent-soft">+{s.points}</span>
-                <Badge tone="neutral">{s.independence_group}</Badge>
-                {s.quote ? <QuoteChip url={s.source_url} /> : null}
+          signals.map((s) => {
+            // R-23 (§3.1). An asserted signal keeps its place on the card, greyed, with the
+            // reason it was downgraded — the reader should be able to see what was found and
+            // why it did not count, not just be told the score is lower.
+            const asserted = s.tier !== "verified";
+            return (
+              <div
+                key={s.id}
+                className={cn(
+                  "rounded-md border px-3 py-2",
+                  asserted
+                    ? "border-hold/30 border-dashed bg-ink-900"
+                    : "border-ink-700 bg-ink-850",
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={asserted ? "neutral" : "accent"}>{s.signal_id}</Badge>
+                  <span className={cn("text-xs", asserted ? "text-ink-400" : "text-ink-100")}>
+                    {SIGNAL_LABEL[s.signal_id as SignalId] ?? s.signal_id}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-mono text-xs",
+                      asserted ? "text-ink-500 line-through" : "text-accent-soft",
+                    )}
+                  >
+                    +{s.points}
+                  </span>
+                  <Badge tone="neutral">{s.independence_group}</Badge>
+                  <Badge tone={asserted ? "hold" : "send"}>
+                    {asserted ? "asserted" : "verified"}
+                  </Badge>
+                  {s.quote ? <QuoteChip url={s.source_url} /> : null}
+                </div>
+                <p
+                  className={cn(
+                    "mt-1 border-l-2 pl-2 text-[11px] leading-snug",
+                    asserted ? "border-ink-800 italic text-ink-500" : "border-ink-700 text-ink-300",
+                  )}
+                >
+                  {s.quote ? `“${s.quote}”` : <NotStated />}
+                </p>
+                {asserted ? (
+                  <p className="mt-1.5 text-[11px] leading-snug text-hold">
+                    <span className="font-semibold">R-23 · scores 0</span> — {s.tier_reason ??
+                      "the evidence does not support this claim"}
+                    .
+                  </p>
+                ) : null}
               </div>
-              <p className="mt-1 border-l-2 border-ink-700 pl-2 text-[11px] leading-snug text-ink-300">
-                {s.quote ? `“${s.quote}”` : <NotStated />}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
+        <TierLegend />
       </CardBody>
     </Card>
+  );
+}
+
+/**
+ * §3.2 — the legend for R-23's chips. It sits under the signals rather than on a help page
+ * because the chips are meaningless without it, and a reader looking at a struck-through score
+ * should not have to go anywhere to find out who struck it.
+ */
+function TierLegend() {
+  return (
+    <div className="mt-1 flex flex-wrap items-start gap-x-4 gap-y-1 border-t border-ink-800 pt-2 text-[11px] leading-snug text-ink-400">
+      <span className="flex items-center gap-1.5">
+        <Badge tone="send">verified</Badge>
+        quoted on a page we fetched, names this company, speaks to this signal — scores
+      </span>
+      <span className="flex items-center gap-1.5">
+        <Badge tone="hold">asserted</Badge>
+        <span>
+          the quote is real but fails one of those tests — <strong>R-23</strong> scores it 0 and
+          excludes it from R-21
+        </span>
+      </span>
+      <span className="flex items-center gap-1.5">
+        <Badge tone="drop">blocked</Badge>
+        on no page we fetched — never shown as evidence, counted on Health
+      </span>
+    </div>
   );
 }
 
@@ -536,17 +597,52 @@ function PainSection({ pains }: { pains: PainPointRow[] }) {
             far.
           </p>
         ) : (
-          pains.map((p) => (
-            <div key={p.id} className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs leading-relaxed text-ink-100">{p.text}</p>
-                {p.validated ? <QuoteChip url={p.source_url} /> : null}
+          pains.map((p) => {
+            // R-23 (§3.1) applies to pain points on the same terms as signals: a quote can be
+            // real and still not be about this company. An unsupported pain point stays visible
+            // so the reader can judge it, but it is marked rather than presented as fact.
+            const asserted = p.tier !== "verified";
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  "rounded-md border px-3 py-2",
+                  asserted ? "border-hold/30 border-dashed bg-ink-900" : "border-ink-700 bg-ink-850",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p
+                    className={cn(
+                      "text-xs leading-relaxed",
+                      asserted ? "text-ink-400" : "text-ink-100",
+                    )}
+                  >
+                    {p.text}
+                  </p>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge tone={asserted ? "hold" : "send"}>
+                      {asserted ? "asserted" : "verified"}
+                    </Badge>
+                    {p.validated ? <QuoteChip url={p.source_url} /> : null}
+                  </div>
+                </div>
+                <p
+                  className={cn(
+                    "mt-1 border-l-2 pl-2 text-[11px] leading-snug",
+                    asserted ? "border-ink-800 italic text-ink-500" : "border-ink-700 text-ink-300",
+                  )}
+                >
+                  {p.validated && p.quote ? `“${p.quote}”` : <NotStated />}
+                </p>
+                {asserted ? (
+                  <p className="mt-1.5 text-[11px] leading-snug text-hold">
+                    <span className="font-semibold">R-23 · not used as fact</span> —{" "}
+                    {p.tier_reason ?? "the evidence does not support this claim"}.
+                  </p>
+                ) : null}
               </div>
-              <p className="mt-1 border-l-2 border-ink-700 pl-2 text-[11px] leading-snug text-ink-300">
-                {p.validated && p.quote ? `“${p.quote}”` : <NotStated />}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
       </CardBody>
     </Card>
@@ -684,9 +780,21 @@ function DraftSection({
             <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
               Hook
             </span>
-            {draft.hook_quote ? <QuoteChip url={draft.hook_url} /> : null}
+            <div className="flex items-center gap-1.5">
+              {/* R-23 (§3.1). `validated` is set by `tierDraft`, which returns true only for a
+                  verified hook — so the chip here reports the same tier the signals carry. */}
+              <Badge tone={validated ? "send" : "hold"}>
+                {validated ? "verified" : "asserted"}
+              </Badge>
+              {draft.hook_quote ? <QuoteChip url={draft.hook_url} /> : null}
+            </div>
           </div>
-          <p className="mt-1 text-[11px] leading-snug text-ink-300">
+          <p
+            className={cn(
+              "mt-1 text-[11px] leading-snug",
+              validated ? "text-ink-300" : "italic text-ink-500",
+            )}
+          >
             {draft.hook_quote ? `“${draft.hook_quote}”` : <NotStated />}
           </p>
         </div>

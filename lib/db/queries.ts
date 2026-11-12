@@ -408,6 +408,60 @@ export async function listFetches(companyId: string): Promise<FetchRow[]> {
     SELECT * FROM fetches WHERE company_id = ${companyId} ORDER BY fetched_at ASC`;
 }
 
+/* ------------------------------------------------------- R-23 evidence ledger */
+
+export type EvidenceBlockRow = {
+  id: string;
+  run_id: string;
+  company_id: string;
+  domain: string;
+  kind: string;
+  claim_id: string | null;
+  tier: string;
+  quote: string | null;
+  reason: string | null;
+  created_at: string;
+};
+
+export type EvidenceBlockInput = {
+  kind: "signal" | "pain_point" | "draft_hook";
+  claim_id?: string | null;
+  tier: "asserted" | "fabricated";
+  quote?: string | null;
+  reason?: string | null;
+};
+
+/**
+ * Record every claim R-23 refused, for the Health counter (§3.2).
+ *
+ * Replace-not-append, keyed on the company, so re-running one domain restates its blocks instead
+ * of doubling them — the counter describes the run as it currently stands, not the sum of every
+ * attempt ever made at it.
+ */
+export async function replaceEvidenceBlocks(
+  companyId: string,
+  runId: string,
+  domain: string,
+  blocks: EvidenceBlockInput[],
+): Promise<void> {
+  await sql`DELETE FROM evidence_blocks WHERE company_id = ${companyId}`;
+  for (const b of blocks) {
+    await sql`
+      INSERT INTO evidence_blocks
+        (id, run_id, company_id, domain, kind, claim_id, tier, quote, reason)
+      VALUES (${newId("eb")}, ${runId}, ${companyId}, ${domain}, ${b.kind},
+              ${b.claim_id ?? null}, ${b.tier}, ${b.quote ?? null}, ${b.reason ?? null})`;
+  }
+}
+
+/** Ordered fabricated-first, because that is the half of the counter worth reading. */
+export async function evidenceBlocks(runId: string): Promise<EvidenceBlockRow[]> {
+  return sql<EvidenceBlockRow>`
+    SELECT * FROM evidence_blocks
+    WHERE run_id = ${runId}
+    ORDER BY tier ASC, domain ASC, kind ASC`;
+}
+
 /** The pages the evidence validator checks quotes against. */
 export async function sourcesFor(companyId: string): Promise<{ url: string; text: string }[]> {
   const rows = await sql<{ url: string; clean_text: string | null }>`
@@ -467,15 +521,20 @@ export type SignalRow = {
   independence_group: string;
   quote: string | null;
   source_url: string | null;
+  /** R-23 (§3.1). Only `verified` scores. */
+  tier: string;
+  tier_reason: string | null;
 };
 
 export async function replaceSignals(companyId: string, signals: FiredSignal[]): Promise<void> {
   await sql`DELETE FROM signals WHERE company_id = ${companyId}`;
   for (const s of signals) {
     await sql`
-      INSERT INTO signals (id, company_id, signal_id, points, independence_group, quote, source_url)
+      INSERT INTO signals (id, company_id, signal_id, points, independence_group, quote,
+                           source_url, tier, tier_reason)
       VALUES (${newId("sg")}, ${companyId}, ${s.signal_id}, ${s.points},
-              ${s.independence_group}, ${s.quote}, ${s.source_url})`;
+              ${s.independence_group}, ${s.quote}, ${s.source_url},
+              ${s.tier ?? "asserted"}, ${s.tier_reason ?? null})`;
   }
 }
 
@@ -499,6 +558,10 @@ export function toFiredSignals(rows: SignalRow[]): FiredSignal[] {
     independence_group: r.independence_group as FiredSignal["independence_group"],
     quote: r.quote,
     source_url: r.source_url,
+    // Re-scoring (§5.5) must not need the pages again, so the tier decided at run time is
+    // carried on the row and read straight back. An unrecognised value is treated as asserted.
+    tier: (r.tier === "verified" ? "verified" : "asserted") as FiredSignal["tier"],
+    tier_reason: r.tier_reason,
   }));
 }
 
@@ -561,18 +624,30 @@ export type PainPointRow = {
   quote: string | null;
   source_url: string | null;
   validated: boolean;
+  /** R-23 (§3.1). */
+  tier: string;
+  tier_reason: string | null;
 };
 
 export async function replacePainPoints(
   companyId: string,
-  points: { text: string; quote: string | null; source_url: string | null; validated: boolean }[],
+  points: {
+    text: string;
+    quote: string | null;
+    source_url: string | null;
+    validated: boolean;
+    tier?: string;
+    tier_reason?: string | null;
+  }[],
 ): Promise<void> {
   await sql`DELETE FROM pain_points WHERE company_id = ${companyId}`;
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     await sql`
-      INSERT INTO pain_points (id, company_id, idx, text, quote, source_url, validated)
-      VALUES (${newId("pp")}, ${companyId}, ${i}, ${p.text}, ${p.quote}, ${p.source_url}, ${p.validated})`;
+      INSERT INTO pain_points (id, company_id, idx, text, quote, source_url, validated,
+                               tier, tier_reason)
+      VALUES (${newId("pp")}, ${companyId}, ${i}, ${p.text}, ${p.quote}, ${p.source_url},
+              ${p.validated}, ${p.tier ?? "asserted"}, ${p.tier_reason ?? null})`;
   }
 }
 

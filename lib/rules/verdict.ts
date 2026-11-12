@@ -27,15 +27,32 @@ export function independentSignals(fired: FiredSignal[]): number {
   return new Set(fired.filter((s) => s.points > 0).map((s) => s.independence_group)).size;
 }
 
+/**
+ * R-23 — only verified evidence scores (§3.1). An asserted signal keeps its place in
+ * `fired_signals` so the card can show it greyed with its reason, but its points are zeroed
+ * here, which removes it from `timingScore` and from `independentSignals` in one move.
+ *
+ * A signal with no tier at all is treated as unsupported. Scoring it would mean trusting that
+ * every path into the verdict remembered to tier its evidence first, and the whole point of
+ * R-23 is to stop relying on that kind of memory.
+ */
+export function zeroUnsupported(fired: FiredSignal[]): FiredSignal[] {
+  return fired.map((s) => (s.tier === "verified" ? s : { ...s, points: 0 }));
+}
+
 export function computeVerdict(
   evidence: EvidenceMap,
   firedRaw: FiredSignal[],
   weights: Weights,
   switches: Switches,
 ): VerdictResult {
-  const fired = repriceSignals(firedRaw, weights).filter((s) => s.points > 0);
+  // Order matters. Reprice first so a slider at 0 removes a signal entirely (T-22), then zero
+  // what R-23 will not score — otherwise an asserted signal would be filtered out as weightless
+  // and the card would lose the very downgrade it is supposed to display.
+  const fired = zeroUnsupported(repriceSignals(firedRaw, weights).filter((s) => s.points > 0));
   const score = timingScore(fired);
   const groups = independentSignals(fired);
+  const verified = fired.filter((s) => s.tier === "verified");
 
   const fit = evaluateFit(evidence, switches);
 
@@ -112,16 +129,36 @@ export function computeVerdict(
   // nothing fired at all. A company with one weak signal — S-06 alone is 10 points — has a
   // timing signal, so dropping it would contradict the stated reason. It holds instead, which
   // is also what T-05 asserts. See DECISIONS.md D-13.
-  if (fired.length > 0) {
+  // Counted on verified signals only. An asserted signal is not a weak timing signal, it is an
+  // unsupported claim — holding on it would mean the quote bought the company a verdict it
+  // could not earn, which is exactly what R-23 was added to stop.
+  if (verified.length > 0) {
     return {
       ...base,
       verdict: "HOLD",
       rule_fired: "R-20",
-      verdict_reason: `R-20: timing score ${score}, below the ${HOLD_THRESHOLD}-point floor — ${fired.length} weak signal${fired.length === 1 ? "" : "s"} only`,
+      verdict_reason: `R-20: timing score ${score}, below the ${HOLD_THRESHOLD}-point floor — ${verified.length} weak signal${verified.length === 1 ? "" : "s"} only`,
       what_would_change_it: `${SEND_THRESHOLD - score} more points across ${Math.max(
         MIN_INDEPENDENT_SIGNALS - groups,
         0,
       )} further independent signal(s) would move this to Send.`,
+    };
+  }
+
+  // "No timing signal" and "no timing signal that held up" are different findings, and the
+  // second one is the more useful of the two: it says we found something and rejected it.
+  const downgraded = fired.filter((s) => s.tier === "asserted");
+  if (downgraded.length > 0) {
+    const ids = downgraded.map((s) => s.signal_id).join(", ");
+    return {
+      ...base,
+      verdict: "DROP",
+      rule_fired: "R-23",
+      verdict_reason: `R-23: ${downgraded.length} signal${
+        downgraded.length === 1 ? "" : "s"
+      } found (${ids}) but none survived the evidence check — every quote was real and none of them supported the claim`,
+      what_would_change_it:
+        "A quote that names this company and speaks to the claim it is attached to. The sentences we found are genuine text from their site, but they are about somebody else, some other time, or some other subject.",
     };
   }
 

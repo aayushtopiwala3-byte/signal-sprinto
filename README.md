@@ -162,8 +162,33 @@ board; a signal at weight 0 keeps its evidence but contributes nothing.
 | R-20 | 20 ≤ score < 50 | **HOLD** |
 | R-20 | score < 20 | **DROP** — fit passed, no timing signal |
 | R-22 | 4/4 fetches spent and a required field is still `not stated` | **HOLD** — hand off rather than guess |
+| R-23 | signals fired, but none of them survived the evidence check | **DROP** — nothing here is supported |
 
 R-22 never touches a fit-gate DROP: an evidenced rejection is not made uncertain by a gap.
+
+### Evidence tiers — `lib/rules/evidenceTier.ts`
+
+R-23 exists because a verbatim match is a weaker test than it looks. Four real quotes from a
+production run passed the old validator and should not have: an industry statistic, a staff
+bio dating something to *before* the company existed, a cookie banner, and a Jina Reader error
+page. Every one of them is genuinely present in the fetched text.
+
+So a quote is scored only when three things hold, all checked in code:
+
+| Tier | Condition | Behaviour |
+|---|---|---|
+| `verified` | verbatim in fetched text **and** mentions the company (name, domain stem, or first person on its own page) **and** contains a trigger term for the signal it is attached to | scores normally |
+| `asserted` | verbatim, but fails one of the two support tests | **scores 0**, excluded from R-21, shown greyed with the reason |
+| `fabricated` | not verbatim on any page fetched for this company | never rendered as evidence; draft blocked; counted on `/health` |
+
+Naming the company is necessary but not sufficient: a quote that names it only to date something
+to *before* it ("Prior to Zipy, …") or to attribute the claim to someone else ("according to …")
+is still asserted. The same three tiers apply to signals, pain points and the draft hook, and the
+hook must be `verified` for the draft to be sendable at all — including after an edit.
+
+Every refusal is written to `evidence_blocks` and counted on `/health` as *N claims downgraded to
+asserted · M fabrications blocked this run*, with a drill-down. A block nobody can see is
+indistinguishable from a check that never ran.
 
 ### Point of contact — `lib/rules/poc.ts`
 

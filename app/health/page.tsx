@@ -20,15 +20,26 @@ export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** §4 — the rule ids stay, with a human label beside them, never instead of them. */
+const KIND_LABEL: Record<string, string> = {
+  signal: "timing signal",
+  pain_point: "pain point",
+  draft_hook: "email hook",
+};
+
 /** §9's health page: model id, Hunter quota, cost in ₹ and USD, cache-hit rate, staleness. */
 export default async function HealthPage() {
   const run = await q.latestRun();
-  const [quota, cost, ledger, pages] = await Promise.all([
+  const [quota, cost, ledger, pages, blocks] = await Promise.all([
     fetchQuota(),
     run ? q.costSummary(run.id) : Promise.resolve(null),
     run ? q.costLedger(run.id) : Promise.resolve([]),
     run ? q.cacheCounts(run.id) : Promise.resolve({ cached: 0, live: 0 }),
+    run ? q.evidenceBlocks(run.id) : Promise.resolve([]),
   ]);
+
+  const downgraded = blocks.filter((b) => b.tier === "asserted");
+  const fabricated = blocks.filter((b) => b.tier === "fabricated");
 
   const startedAt = run ? new Date(run.started_at) : null;
   const stale = startedAt !== null && Date.now() - startedAt.getTime() > DAY_MS;
@@ -61,6 +72,78 @@ export default async function HealthPage() {
           before trusting them.
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader className="flex items-center gap-2">
+          <CardTitle>Evidence check — R-23</CardTitle>
+          <Badge tone={fabricated.length > 0 ? "drop" : downgraded.length > 0 ? "hold" : "send"}>
+            {blocks.length === 0 ? "nothing refused" : `${blocks.length} refused`}
+          </Badge>
+        </CardHeader>
+        <CardBody className="space-y-2 text-xs">
+          <p className="font-mono text-sm text-ink-100">
+            <span className={downgraded.length > 0 ? "text-hold" : "text-ink-400"}>
+              {downgraded.length} claim{downgraded.length === 1 ? "" : "s"} downgraded to asserted
+            </span>
+            <span className="text-ink-600"> · </span>
+            <span className={fabricated.length > 0 ? "text-drop" : "text-ink-400"}>
+              {fabricated.length} fabrication{fabricated.length === 1 ? "" : "s"} blocked this run
+            </span>
+          </p>
+          <p className="text-[11px] leading-snug text-ink-400">
+            A quote that exists is not a quote that supports the claim. R-23 checks a third thing
+            beyond the verbatim match: that the sentence is about <em>this company</em> and about{" "}
+            <em>this claim</em>. An <span className="font-mono">asserted</span> claim is real text
+            that fails one of those two tests — it is still shown, greyed, with the reason, and it
+            scores zero. A <span className="font-mono">fabricated</span> one appears on no page
+            fetched for that company and is never rendered as evidence at all.
+          </p>
+
+          {blocks.length === 0 ? (
+            <p className="text-[11px] leading-snug text-ink-400">
+              {run
+                ? "Nothing was refused on the last run. That is a result, not an absence of checking — every claim that fired was traced back to a page and matched."
+                : "No run yet, so there is nothing to check."}
+            </p>
+          ) : (
+            <details className="group rounded-md border border-ink-700 bg-ink-850">
+              <summary className="cursor-pointer select-none px-3 py-2 text-[11px] text-ink-300 marker:text-ink-500">
+                Show what was refused
+              </summary>
+              <div className="space-y-1.5 border-t border-ink-700 px-3 py-2">
+                {blocks.map((b) => (
+                  <div
+                    key={b.id}
+                    className={cn(
+                      "rounded border px-2.5 py-1.5",
+                      b.tier === "fabricated"
+                        ? "border-drop/30 bg-drop/5"
+                        : "border-hold/30 bg-hold/5",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={b.tier === "fabricated" ? "drop" : "hold"}>
+                        {b.tier === "fabricated" ? "blocked" : "asserted"}
+                      </Badge>
+                      <span className="font-mono text-[11px] text-ink-200">{b.domain}</span>
+                      <span className="text-[11px] text-ink-400">{KIND_LABEL[b.kind] ?? b.kind}</span>
+                      {b.claim_id ? (
+                        <span className="font-mono text-[10px] text-ink-400">{b.claim_id}</span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 border-l-2 border-ink-700 pl-2 text-[11px] italic leading-snug text-ink-500">
+                      {b.quote ? `“${b.quote}”` : <NotStated />}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-snug text-ink-300">
+                      {b.reason ?? <NotStated />}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </CardBody>
+      </Card>
 
       <div className="grid gap-3 md:grid-cols-2">
         <Card>

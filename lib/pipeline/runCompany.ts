@@ -19,10 +19,10 @@ import { chooseNextUrl } from "@/lib/pipeline/loop";
 import { findContacts, peekHunterMeta } from "@/lib/hunter/client";
 import { evaluateFit } from "@/lib/rules/fit";
 import { detectSignals, type PageRecord } from "@/lib/rules/signals";
+import { tierAllSignals, tierDraft, tierPainPoints } from "@/lib/rules/evidenceTier";
 import { computeVerdict } from "@/lib/rules/verdict";
 import type { VerdictResult } from "@/lib/types";
 import { selectContact, isGeneric, displayName } from "@/lib/rules/poc";
-import { validateDraft, validatePainPoints } from "@/lib/rules/evidenceValidator";
 import { NOT_STATED, type EvidenceMap, type LoopField, type SizeBand } from "@/lib/types";
 import * as q from "@/lib/db/queries";
 
@@ -178,6 +178,15 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
   const spentUsd = await runCostUsd(run.id);
   const budgetExhausted = spentUsd >= RUN_BUDGET_USD;
   const ai = { runId: run.id, companyId, aiEnabled: switches.ai_enabled, budgetExhausted };
+
+  /**
+   * Everything R-23 refused on this company, accumulated across ⑦–⑩ and written once (§3.2).
+   * Collected in one array rather than inserted as each claim fails so that a company which
+   * drops out at the FIT gate still reports its blocked signals — the counter is about what the
+   * evidence check caught, and the check ran whether or not the company was worth drafting for.
+   */
+  const blocks: q.EvidenceBlockInput[] = [];
+  const saveBlocks = () => q.replaceEvidenceBlocks(companyId, run.id, domain, blocks);
 
   const quarantine = async (code: string, text: string): Promise<RunCompanyResult> => {
     await q.insertQuarantine({ runId: run.id, domain, reasonCode: code, reasonText: text });
@@ -480,7 +489,27 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
       await q.saveEvidence(companyId, evidence);
     }
 
-    const fired = detectSignals({ evidence, pages }, weights);
+    // R-23 (§3.1). Detection asks "does a sentence on their site match this pattern". Tiering
+    // asks the separate, harder question of whether that sentence is about *this company* and
+    // about *this claim*. Only verified evidence reaches the score.
+    const tieredSignals = tierAllSignals(
+      detectSignals({ evidence, pages }, weights),
+      domain,
+      pages.map((p) => ({ url: p.url, text: p.text })),
+    );
+    // Fabricated signals are dropped here rather than stored, but they are counted first
+    // (§3.2) — see `blocks` below.
+    const fired = tieredSignals.filter((s) => s.tier !== "fabricated");
+    for (const s of tieredSignals) {
+      if (s.tier === "verified") continue;
+      blocks.push({
+        kind: "signal",
+        claim_id: s.signal_id,
+        tier: s.tier === "fabricated" ? "fabricated" : "asserted",
+        quote: s.quote,
+        reason: s.tier_reason ?? null,
+      });
+    }
     const fit = evaluateFit(evidence, switches);
     const missingAtEnd = emptyFields(evidence);
 
@@ -509,6 +538,7 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
     // ⑧–⑩ are for companies that cleared FIT only (§7.1). Spending a Hunter credit and two
     // model calls on a company we already dropped would be money burnt on a decided question.
     if (!fit.pass) {
+      await saveBlocks();
       return {
         companyId,
         domain,
@@ -617,7 +647,18 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
       });
       if (painResult.ok) rawPoints = painResult.data.pain_points;
     }
-    const validatedPoints = validatePainPoints(rawPoints, sources);
+    const validatedPoints = tierPainPoints(rawPoints, sources, domain);
+    for (const p of validatedPoints) {
+      // `produced` filters out the empty second slot: a point the model never wrote is not a
+      // fabrication the check caught, and counting it would pad the number (§3.2).
+      if (!p.produced || p.tier === "verified") continue;
+      blocks.push({
+        kind: "pain_point",
+        tier: p.tier === "fabricated" ? "fabricated" : "asserted",
+        quote: p.original_quote,
+        reason: p.tier_reason,
+      });
+    }
     await q.replacePainPoints(
       companyId,
       validatedPoints.map((p) => ({
@@ -625,6 +666,8 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         quote: p.quote,
         source_url: p.source_url,
         validated: p.validated,
+        tier: p.tier,
+        tier_reason: p.tier_reason,
       })),
     );
 
@@ -682,7 +725,15 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
           blocked_reason: `No draft: ${draftResult.reason}`,
         });
       } else {
-        const check = validateDraft(draftResult.data, sources);
+        const check = tierDraft(draftResult.data, sources, domain);
+        if (check.tier !== "verified") {
+          blocks.push({
+            kind: "draft_hook",
+            tier: check.tier === "fabricated" ? "fabricated" : "asserted",
+            quote: draftResult.data.hook_quote,
+            reason: check.blocked_reason,
+          });
+        }
         await q.replaceDraft(companyId, {
           subject: draftResult.data.subject,
           body: draftResult.data.body,
@@ -694,6 +745,7 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
       }
     }
 
+    await saveBlocks();
     await q.setStage(companyId, "done");
     return {
       companyId,

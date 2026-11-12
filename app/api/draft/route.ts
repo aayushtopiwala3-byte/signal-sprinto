@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { validateDraft } from "@/lib/rules/evidenceValidator";
+import { tierDraft } from "@/lib/rules/evidenceTier";
 import * as q from "@/lib/db/queries";
 
 export const runtime = "nodejs";
@@ -11,6 +11,10 @@ export const dynamic = "force-dynamic";
  * An edit that deletes the hook quote from the body un-grounds the email, so the draft is
  * re-validated against the same fetched pages the model saw. Editing can therefore block a draft
  * that was sendable, which is the point: the lock is on the evidence, not on the author.
+ *
+ * The re-check runs the R-23 tiering (§3.1), not the older verbatim-only check. If editing used
+ * the weaker test, an edit would be a way around the support requirement: a hook that was
+ * downgraded to asserted at run time would come back sendable the moment anyone touched the body.
  */
 export async function POST(request: Request) {
   let body: { draftId?: string; subject?: string; body?: string };
@@ -29,10 +33,12 @@ export async function POST(request: Request) {
   const draft = await q.getDraftById(draftId);
   if (!draft) return NextResponse.json({ error: `Draft ${draftId} not found.` }, { status: 404 });
 
+  const company = await q.getCompany(draft.company_id);
   const sources = await q.sourcesFor(draft.company_id);
-  const check = validateDraft(
+  const check = tierDraft(
     { hook_quote: draft.hook_quote, hook_url: draft.hook_url, body: body.body },
     sources,
+    company?.domain ?? "",
   );
 
   await q.updateDraftText(draftId, body.subject, body.body);

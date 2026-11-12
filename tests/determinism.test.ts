@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { detectSignals } from "@/lib/rules/signals";
+import { applyEvidenceTiers } from "@/lib/rules/evidenceTier";
 import { computeVerdict, compareForBoard } from "@/lib/rules/verdict";
 import { selectContact } from "@/lib/rules/poc";
 import {
@@ -43,7 +44,13 @@ describe("T-14 — the rules engine is deterministic by construction (§5.3)", (
     const evidence = fittingEvidence({ size_band: "11-50", cert_status: "in_progress" });
 
     const run = () => {
-      const fired = detectSignals({ evidence, pages }, weights());
+      // The production path: detect, then tier, then score. Tiering is part of what has to be
+      // deterministic, so running it here rather than skipping it is the stronger test.
+      const fired = applyEvidenceTiers(
+        detectSignals({ evidence, pages }, weights()),
+        "example.com",
+        pages.map((p) => ({ url: p.url, text: p.text })),
+      );
       const verdict = computeVerdict(evidence, fired, weights(), switches());
       return JSON.stringify(verdict);
     };

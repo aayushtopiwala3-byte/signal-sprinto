@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { computeVerdict, compareForBoard, independentSignals } from "@/lib/rules/verdict";
 import { detectSignals } from "@/lib/rules/signals";
+import { applyEvidenceTiers } from "@/lib/rules/evidenceTier";
 import { evaluateFit } from "@/lib/rules/fit";
 import type { FiredSignal } from "@/lib/types";
 import {
@@ -16,16 +17,24 @@ import {
   PAGE_ENTERPRISE_LOGOS,
 } from "./helpers";
 
+/**
+ * Verdict-math fixtures. `tier` defaults to `verified` because these cases are about the
+ * thresholds and the independence count, not about evidence quality — R-23 itself is tested in
+ * tests/evidenceTier.test.ts, and the asserted case is pinned explicitly further down.
+ */
 const signal = (
   signal_id: FiredSignal["signal_id"],
   points: number,
   group: FiredSignal["independence_group"],
+  tier: FiredSignal["tier"] = "verified",
 ): FiredSignal => ({
   signal_id,
   points,
   independence_group: group,
   quote: "a sufficiently long verbatim sentence taken from the page",
   source_url: "https://example.com/",
+  tier,
+  tier_reason: tier === "verified" ? null : "downgraded for this test",
 });
 
 describe("T-03 — R-02 headcount gate (§5.1, §2.4)", () => {
@@ -116,12 +125,81 @@ describe("T-05 — a single weak signal never reaches SEND (§5.3, D-13)", () =>
     expect(result.verdict_reason).toBe("R-20: fit passed, no timing signal");
   });
 
-  it("detects S-06 alone from a funding page and still holds", () => {
-    const fired = detectSignals(
-      { evidence: fittingEvidence(), pages: [PAGE_FUNDING_ONLY] },
+  it("R-23 — an asserted signal scores nothing and buys no independence", () => {
+    const result = computeVerdict(
+      fittingEvidence(),
+      [
+        signal("S-01", 40, "certification", "asserted"),
+        signal("S-03", 30, "hiring", "asserted"),
+      ],
       weights(),
+      switches(),
+    );
+
+    expect(result.timing_score).toBe(0);
+    expect(result.independent_signals).toBe(0);
+    expect(result.verdict).toBe("DROP");
+    // Still on the card, so the reader can see what was found and why it was not trusted.
+    expect(result.fired_signals).toHaveLength(2);
+    expect(result.fired_signals.every((s) => s.points === 0)).toBe(true);
+  });
+
+  it("R-23 — names the downgrade rather than claiming nothing was found", () => {
+    // "No timing signal" and "no timing signal that held up" are different findings, and
+    // reporting the first when the second is true hides the work R-23 did.
+    const result = computeVerdict(
+      fittingEvidence(),
+      [signal("S-06", 10, "funding", "asserted")],
+      weights(),
+      switches(),
+    );
+
+    expect(result.rule_fired).toBe("R-23");
+    expect(result.verdict_reason).toContain("none survived the evidence check");
+    expect(result.verdict_reason).toContain("S-06");
+  });
+
+  it("R-23 — a verified signal alongside an asserted one scores only the verified half", () => {
+    const result = computeVerdict(
+      fittingEvidence(),
+      [
+        signal("S-01", 40, "certification", "verified"),
+        signal("S-04", 25, "enterprise-demand", "asserted"),
+      ],
+      weights(),
+      switches(),
+    );
+
+    expect(result.timing_score).toBe(40);
+    expect(result.independent_signals).toBe(1);
+    // 40 clears the score threshold; the second group was asserted, so R-21 is what bites.
+    expect(result.rule_fired).toBe("R-20");
+    expect(result.verdict).toBe("HOLD");
+  });
+
+  it("R-23 — an untiered signal is treated as unsupported, not waved through", () => {
+    // Fail closed. Scoring an untiered signal would mean trusting that every path into the
+    // verdict remembered to tier its evidence first.
+    const untiered = {
+      signal_id: "S-01" as const,
+      points: 40,
+      independence_group: "certification" as const,
+      quote: "a sufficiently long verbatim sentence taken from the page",
+      source_url: "https://example.com/",
+    };
+    const result = computeVerdict(fittingEvidence(), [untiered], weights(), switches());
+    expect(result.timing_score).toBe(0);
+  });
+
+  it("detects S-06 alone from a funding page and still holds", () => {
+    const fired = applyEvidenceTiers(
+      detectSignals({ evidence: fittingEvidence(), pages: [PAGE_FUNDING_ONLY] }, weights()),
+      "example.com",
+      [{ url: PAGE_FUNDING_ONLY.url, text: PAGE_FUNDING_ONLY.text }],
     );
     expect(fired.map((f) => f.signal_id)).toEqual(["S-06"]);
+    // "we have raised $12 million" — first person, on their own page, naming the claim.
+    expect(fired[0].tier).toBe("verified");
     const result = computeVerdict(fittingEvidence(), fired, weights(), switches());
     expect(result.verdict).toBe("HOLD");
   });

@@ -63,12 +63,25 @@ export type IndependenceGroup =
   | "funding"
   | "vertical";
 
+/**
+ * R-23 (§3.1). `verified` is the only tier that scores. `asserted` is still shown — greyed, with
+ * the reason — because hiding it would quietly recreate the thing R-23 exists to expose.
+ *
+ * Optional on the type because `detectSignals` produces signals before anything has decided
+ * whether their evidence supports them; `applyEvidenceTiers` fills it in. A signal that reaches
+ * the verdict with no tier is treated as unsupported rather than waved through.
+ */
+export type EvidenceTier = "verified" | "asserted" | "fabricated";
+
 export type FiredSignal = {
   signal_id: SignalId;
   points: number;
   independence_group: IndependenceGroup;
   quote: string | null;
   source_url: string | null;
+  tier?: EvidenceTier;
+  /** Why it is not verified, phrased for the card. Null when it is. */
+  tier_reason?: string | null;
 };
 
 /** S-01…S-07 point values. User-adjustable 0–50 via the sliders (§5.5). */

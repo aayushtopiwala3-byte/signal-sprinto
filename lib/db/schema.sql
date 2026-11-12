@@ -111,6 +111,13 @@ CREATE TABLE IF NOT EXISTS signals (
   source_url         TEXT
 );
 CREATE INDEX IF NOT EXISTS signals_company_idx ON signals (company_id);
+-- R-23 (§3.1). A quote that exists is not a quote that supports the claim: `verified` is the
+-- only tier that scores, `asserted` is stored and shown greyed with `tier_reason` beside it.
+-- Defaults to 'asserted' rather than 'verified' on purpose — a row written before tiering
+-- existed has never been checked, and the safe reading of an unchecked claim is that it did not
+-- earn its points. Re-scoring a company rewrites these rows with a real tier.
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'asserted';
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS tier_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS contacts (
   id          TEXT PRIMARY KEY,
@@ -140,6 +147,11 @@ CREATE TABLE IF NOT EXISTS pain_points (
   validated  BOOLEAN NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS pain_points_company_idx ON pain_points (company_id);
+-- R-23 again (§3.1). `validated` was already a boolean, but two very different things were
+-- collapsing into `false`: a quote that is real but unsupported, and a quote that is not on any
+-- page at all. The tier keeps them apart on the card.
+ALTER TABLE pain_points ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'asserted';
+ALTER TABLE pain_points ADD COLUMN IF NOT EXISTS tier_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS drafts (
   id             TEXT PRIMARY KEY,
@@ -153,6 +165,32 @@ CREATE TABLE IF NOT EXISTS drafts (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS drafts_company_idx ON drafts (company_id);
+
+-- R-23's ledger (§3.2). Every claim that failed the evidence check, across all three kinds of
+-- claim, written in one place so the Health counter is a single query rather than a union of
+-- three tables that each record their tier differently.
+--
+-- It exists mainly for the fabricated case. An asserted signal survives on its `signals` row and
+-- could be counted there, but a fabricated one is dropped before it is ever persisted — its quote
+-- is on no page we fetched, so there is nothing to link to and no business rendering it as
+-- evidence. Without this table a fabrication would be blocked silently, and a block nobody can
+-- see is indistinguishable from a check that never ran.
+CREATE TABLE IF NOT EXISTS evidence_blocks (
+  id         TEXT PRIMARY KEY,
+  run_id     TEXT NOT NULL,
+  company_id TEXT NOT NULL,
+  domain     TEXT NOT NULL,
+  -- 'signal' | 'pain_point' | 'draft_hook'
+  kind       TEXT NOT NULL,
+  -- The signal id for a signal, else null: a pain point and a hook carry no rule id of their own.
+  claim_id   TEXT,
+  tier       TEXT NOT NULL,
+  quote      TEXT,
+  reason     TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS evidence_blocks_run_idx ON evidence_blocks (run_id);
+CREATE INDEX IF NOT EXISTS evidence_blocks_company_idx ON evidence_blocks (company_id);
 
 CREATE TABLE IF NOT EXISTS sends (
   id         TEXT PRIMARY KEY,
