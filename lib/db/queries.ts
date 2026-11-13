@@ -844,6 +844,50 @@ export async function costLedger(runId: string): Promise<CostRow[]> {
     SELECT * FROM cost_ledger WHERE run_id = ${runId} ORDER BY created_at ASC`;
 }
 
+/**
+ * §6.4 — the counts the economics panel presents as measured fact: how many companies were
+ * scored, how many reached each verdict, and how long the run actually took.
+ *
+ * Kept as one query rather than derived in the page, so "cost per Send" divides by the same
+ * number the board displays. Two places counting Sends differently is how a ROI figure quietly
+ * becomes wrong.
+ */
+export async function runOutcomeCounts(runId: string): Promise<{
+  scored: number;
+  send: number;
+  hold: number;
+  drop: number;
+  quarantined: number;
+  elapsedMs: number | null;
+}> {
+  const rows = await sql<{ verdict: string | null; n: string | number }>`
+    SELECT verdict, COUNT(*) AS n FROM companies WHERE run_id = ${runId} GROUP BY verdict`;
+  let send = 0;
+  let hold = 0;
+  let drop = 0;
+  let scored = 0;
+  for (const r of rows) {
+    const n = Number(r.n);
+    if (r.verdict === "SEND") send += n;
+    else if (r.verdict === "HOLD") hold += n;
+    else if (r.verdict === "DROP") drop += n;
+    if (r.verdict !== null) scored += n;
+  }
+
+  const qrows = await sql<{ n: string | number }>`
+    SELECT COUNT(*) AS n FROM quarantine WHERE run_id = ${runId}`;
+
+  const trows = await sql<{ started_at: string; finished_at: string | null }>`
+    SELECT started_at, finished_at FROM runs WHERE id = ${runId}`;
+  const t = trows[0];
+  const elapsedMs =
+    t?.finished_at != null
+      ? new Date(t.finished_at).getTime() - new Date(t.started_at).getTime()
+      : null;
+
+  return { scored, send, hold, drop, quarantined: Number(qrows[0]?.n ?? 0), elapsedMs };
+}
+
 export async function costSummary(runId: string): Promise<{
   totalUsd: number;
   calls: number;

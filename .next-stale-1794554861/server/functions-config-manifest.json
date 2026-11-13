@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/contact": {},
+    "/api/feedback": {},
+    "/api/draft": {},
+    "/api/run/[id]": {},
+    "/api/run/step": {
+      "maxDuration": 60
+    },
+    "/api/selftest": {},
+    "/api/rerank": {},
+    "/api/send": {
+      "maxDuration": 30
+    },
+    "/api/run/start": {}
+  }
+}

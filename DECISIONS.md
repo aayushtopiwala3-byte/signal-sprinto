@@ -623,3 +623,22 @@ Three things that make it a queue rather than a second opinion:
 Only `verified` signals count as evidence we have. An asserted signal scored nothing, so treating
 it as "already found" would tell the reader to go looking for a signal that is sitting on the
 card marked as rejected.
+
+### D-46 · The economics panel is split measured / estimated, and the baseline is not persisted [§6.4]
+Everything above the line is read from the run's own ledger. Everything below it is arithmetic on
+a number the reader typed in. §6.4 requires the disclaimer verbatim, and `tests/economics.test.ts`
+asserts the exact string, because that sentence is the only thing separating this panel from a
+ROI claim — and a sentence that can be quietly reworded in a later edit is not a safeguard.
+
+The baseline is **deliberately not persisted**. Storing it would make it look like a setting the
+system knows, when it is the reader's own guess about their own process. The moment a borrowed
+assumption is saved and re-displayed, it starts reading like a measurement — which is exactly the
+confusion the split exists to prevent. It resets to 15 minutes on every load, and the figures it
+drives are labelled `(estimate)` individually, not just once at the top.
+
+`runOutcomeCounts` is one query rather than three derivations in the page, so "cost per Send"
+divides by the same number the board shows. Two places counting Sends differently is how an ROI
+figure quietly becomes wrong.
+
+Zero Sends renders as *"no Sends on this run — the cost is real and the number of Sends is zero"*
+rather than a dash. A division that cannot be performed is a finding about the run.

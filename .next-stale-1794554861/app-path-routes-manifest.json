@@ -1,0 +1,17 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/contact/route": "/api/contact",
+  "/api/feedback/route": "/api/feedback",
+  "/api/draft/route": "/api/draft",
+  "/api/selftest/route": "/api/selftest",
+  "/api/run/start/route": "/api/run/start",
+  "/api/run/[id]/route": "/api/run/[id]",
+  "/api/send/route": "/api/send",
+  "/api/rerank/route": "/api/rerank",
+  "/api/run/step/route": "/api/run/step",
+  "/page": "/",
+  "/selftest/page": "/selftest",
+  "/quarantine/page": "/quarantine",
+  "/company/[id]/page": "/company/[id]",
+  "/health/page": "/health"
+}

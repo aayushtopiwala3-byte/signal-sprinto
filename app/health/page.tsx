@@ -15,6 +15,7 @@ import { MAX_CRAWL_DELAY_MS } from "@/lib/fetch/robots";
 import { PAGE_CACHE_MAX_AGE_DAYS } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 import * as q from "@/lib/db/queries";
+import { EconomicsPanel } from "@/components/Economics";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +31,15 @@ const KIND_LABEL: Record<string, string> = {
 /** §9's health page: model id, Hunter quota, cost in ₹ and USD, cache-hit rate, staleness. */
 export default async function HealthPage() {
   const run = await q.latestRun();
-  const [quota, cost, ledger, pages, blocks] = await Promise.all([
+  const [quota, cost, ledger, pages, blocks, outcomes] = await Promise.all([
     fetchQuota(),
     run ? q.costSummary(run.id) : Promise.resolve(null),
     run ? q.costLedger(run.id) : Promise.resolve([]),
     run ? q.cacheCounts(run.id) : Promise.resolve({ cached: 0, live: 0 }),
     run ? q.evidenceBlocks(run.id) : Promise.resolve([]),
+    run
+      ? q.runOutcomeCounts(run.id)
+      : Promise.resolve({ scored: 0, send: 0, hold: 0, drop: 0, quarantined: 0, elapsedMs: null }),
   ]);
 
   const downgraded = blocks.filter((b) => b.tier === "asserted");
@@ -72,6 +76,19 @@ export default async function HealthPage() {
           before trusting them.
         </div>
       ) : null}
+
+      <EconomicsPanel
+        data={{
+          totalUsd: usd,
+          calls: cost?.calls ?? 0,
+          cacheHits: cost?.cacheHits ?? 0,
+          hunterUsed: quota?.used ?? null,
+          hunterRemaining: quota?.remaining ?? null,
+          scored: outcomes.scored,
+          send: outcomes.send,
+          elapsedMs: outcomes.elapsedMs,
+        }}
+      />
 
       <Card>
         <CardHeader className="flex items-center gap-2">
