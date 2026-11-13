@@ -18,6 +18,7 @@ import {
 import { RulesOnlyBanner } from "@/components/SiteChrome";
 import { SIGNAL_LABEL } from "@/lib/rules/signals";
 import { cn } from "@/lib/utils";
+import { EMPTY_STATE_BOARD } from "@/lib/ui/emptyStates";
 import { RULE_LABEL, TIER_LABEL, fieldsAsNouns } from "@/lib/ui/labels";
 import { counterfactualFor } from "@/lib/rules/counterfactual";
 import { SAMPLE_DOMAINS } from "@/lib/seed/sampleDomains";
@@ -574,10 +575,12 @@ function EmptyBoard() {
         <CardTitle>No run yet</CardTitle>
       </CardHeader>
       <CardBody className="space-y-3 text-xs leading-relaxed text-ink-300">
+        {/* T-26 asserts this copy, so it is rendered from the same constant the test reads —
+            a test against a string the page does not use would be exactly F-11 again. */}
+        <p>{EMPTY_STATE_BOARD}</p>
         <p>
-          Signal reads a company&apos;s own website, decides whether they are worth contacting
-          today, and drafts the email if they are. Every claim on every card is a verbatim quote
-          with a live link, or the literal words <span className="font-mono">not stated</span>.
+          Every claim on every card is a verbatim quote with a live link, or the literal words{" "}
+          <span className="font-mono">not stated</span>.
         </p>
         <p>
           The twelve sample domains are already in the box on the left. Press{" "}

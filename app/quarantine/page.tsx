@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EMPTY_STATE_QUARANTINE } from "@/lib/ui/emptyStates";
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui/primitives";
 import * as q from "@/lib/db/queries";
 
@@ -35,7 +36,7 @@ export default async function QuarantinePage() {
             <p className="text-xs text-ink-400">
               {run
                 ? "Nothing was refused in this run. Every submitted domain was fetched and scored — check the board."
-                : "No run yet. Press Run on the board and this page fills in as domains are refused."}{" "}
+                : EMPTY_STATE_QUARANTINE}{" "}
               <Link href="/" className="text-accent-soft hover:underline">
                 Go to the board →
               </Link>

@@ -4,6 +4,15 @@ import { detectSignals, type PageRecord } from "@/lib/rules/signals";
 import { computeVerdict } from "@/lib/rules/verdict";
 import { selectContact, type HunterCandidate } from "@/lib/rules/poc";
 import { validateDraft } from "@/lib/rules/evidenceValidator";
+import { applyEvidenceTiers, tierForSignal } from "@/lib/rules/evidenceTier";
+import { zeroUnsupported } from "@/lib/rules/verdict";
+import { degradations } from "@/lib/env";
+import {
+  EMPTY_STATE_BOARD,
+  EMPTY_STATE_HEALTH,
+  EMPTY_STATE_QUARANTINE,
+  EMPTY_STATE_REPLIES,
+} from "@/lib/ui/emptyStates";
 import { shouldContinue, MAX_EXTRA_FETCHES } from "@/lib/pipeline/completeness";
 import { ExtractSchema } from "@/lib/ai/prompts/extract";
 import { capability, sendToOrNull } from "@/lib/env";
@@ -69,6 +78,21 @@ const PAGE_CERT_IN_PROGRESS = page(
   "Our SOC 2 Type II audit is currently in progress and we expect the report to be available next quarter. " +
     "We take the protection of customer information extremely seriously across every part of the platform.",
 );
+
+/**
+ * The production signal path in one place: detect, then tier, then hand to the verdict.
+ *
+ * Both fixtures above are first-person ("We have raised…", "Our SOC 2 Type II audit…") on
+ * example.com, so R-23 tiers them `verified` and they score normally. Routing through here
+ * rather than calling `detectSignals` directly is what keeps these cases testing the pipeline
+ * that actually ships.
+ */
+const tiered = (pages: PageRecord[]) =>
+  applyEvidenceTiers(
+    detectSignals({ evidence: FITTING, pages }, DEFAULT_WEIGHTS),
+    "example.com",
+    pages.map((p) => ({ url: p.url, text: p.text })),
+  );
 
 /* ------------------------------------------------------------------- cases */
 
@@ -148,7 +172,10 @@ export const GOLDEN_SET: GoldenCase[] = [
     id: "T-05",
     title: "Only S-06 (funding, 10 pts) returns HOLD, never SEND",
     run: () => {
-      const fired = detectSignals({ evidence: FITTING, pages: [PAGE_FUNDING] }, DEFAULT_WEIGHTS);
+      // Production order: detect, then tier, then score. Skipping the tiering step would be
+      // testing a path the pipeline no longer has — R-23 fails closed, so an untiered signal
+      // scores 0 and this case would "fail" for a reason that never happens in a real run.
+      const fired = tiered([PAGE_FUNDING]);
       const r = computeVerdict(FITTING, fired, DEFAULT_WEIGHTS, sw());
       const only = fired.map((s) => s.signal_id).join(", ") || "none";
       return check(
@@ -161,10 +188,7 @@ export const GOLDEN_SET: GoldenCase[] = [
     id: "T-06",
     title: "S-01 + S-02 together give `independent_signals = 1`, not 2",
     run: () => {
-      const fired = detectSignals(
-        { evidence: FITTING, pages: [PAGE_CERT_IN_PROGRESS] },
-        DEFAULT_WEIGHTS,
-      );
+      const fired = tiered([PAGE_CERT_IN_PROGRESS]);
       const r = computeVerdict(FITTING, fired, DEFAULT_WEIGHTS, sw());
       const ids = fired.map((s) => s.signal_id).join(", ");
       return check(
@@ -373,19 +397,125 @@ export const GOLDEN_SET: GoldenCase[] = [
       );
     },
   },
+  {
+    id: "T-17",
+    title: "A verbatim quote that does not mention the company is asserted and scores 0",
+    run: () => {
+      // The real zipy.ai S-06 quote. It is genuinely on their page and it passed the old
+      // verbatim-only validator — which is precisely why R-23 exists.
+      const quote =
+        "SaaS startups have raised $5 billion to date in funding since the beginning of 2022, according to data research firm Tracxn.";
+      const sources = [{ url: "https://zipy.ai/blog", text: `Blog. ${quote} More text.` }];
+
+      const tier = tierForSignal({
+        signal_id: "S-06",
+        quote,
+        claimedUrl: "https://zipy.ai/blog",
+        sources,
+        domain: "zipy.ai",
+      });
+
+      const fired = applyEvidenceTiers(
+        [
+          {
+            signal_id: "S-06",
+            points: 10,
+            independence_group: "funding",
+            quote,
+            source_url: "https://zipy.ai/blog",
+          },
+        ],
+        "zipy.ai",
+        sources,
+      );
+      const scored = zeroUnsupported(fired);
+
+      return check(
+        tier.tier === "asserted" && scored[0]?.points === 0,
+        tier.tier === "asserted"
+          ? `tiered asserted — "${tier.reason}" — and repriced from 10 to ${scored[0]?.points ?? "?"}.`
+          : `wrongly tiered ${tier.tier}; the support check is too loose.`,
+      );
+    },
+  },
+  {
+    id: "T-25",
+    title: "With GEMINI_API_KEY unset the app starts, runs rules-only, and says so on screen",
+    run: () => {
+      const aiAvailable = capability.ai();
+      const banners = degradations();
+      const named = banners.find((d) => d.variable === "GEMINI_API_KEY");
+
+      if (aiAvailable) {
+        // The key IS set here, so the degradation cannot be observed directly. What can be
+        // asserted is the thing that makes it safe: the verdict never consults a model, so
+        // removing the key cannot change a decision.
+        const withAi = computeVerdict(FITTING, [], DEFAULT_WEIGHTS, sw({ ai_enabled: true }));
+        const withoutAi = computeVerdict(FITTING, [], DEFAULT_WEIGHTS, sw({ ai_enabled: false }));
+        return check(
+          withAi.verdict === withoutAi.verdict && withAi.rule_fired === withoutAi.rule_fired,
+          `GEMINI_API_KEY is set, so the banner is not showing. The decision is identical with AI on and off (${withAi.verdict} / ${withAi.rule_fired}), which is why unsetting the key degrades the app rather than breaking it.`,
+        );
+      }
+
+      return check(
+        named !== undefined && named.level === "warn",
+        named
+          ? `rules-only, and the banner says so: "${named.effect}"`
+          : "no key and no banner — the degradation would be silent, which §10 forbids.",
+      );
+    },
+  },
+  {
+    id: "T-26",
+    title: "Every page defines an explicit empty state for before any run has happened",
+    run: () => {
+      // Source-level, and labelled as such: this asserts that each page has a written,
+      // non-empty branch for "no run yet", not that React rendered it. A render test would
+      // need a browser; this at least fails loudly if someone deletes the branch.
+      const pages: [string, string][] = [
+        ["board", EMPTY_STATE_BOARD],
+        ["quarantine", EMPTY_STATE_QUARANTINE],
+        ["health", EMPTY_STATE_HEALTH],
+        ["replies", EMPTY_STATE_REPLIES],
+      ];
+      const thin = pages.filter(([, copy]) => copy.trim().length < 20);
+      return check(
+        thin.length === 0,
+        thin.length === 0
+          ? `All four pages define an empty state that says what to do next, not just that there is nothing here.`
+          : `Missing or thin empty state on: ${thin.map(([n]) => n).join(", ")}.`,
+      );
+    },
+  },
 ];
 
-export type GoldenResult = { id: string; title: string } & GoldenOutcome;
+export type GoldenResult = { id: string; title: string; kind: "structural" | "behavioural" } &
+  GoldenOutcome;
 
-export async function runGoldenSet(): Promise<GoldenResult[]> {
+/**
+ * §7 — structural cases first, then the behavioural ones that read the live database.
+ *
+ * The order is the argument: the fast, pure assertions prove the rules are right, and the slow
+ * ones prove the pipeline is still feeding them. F-11 was a suite that only ever did the first
+ * and reported ALL GREEN while the product produced nothing but Holds.
+ */
+export async function runGoldenSet(cases?: GoldenCase[]): Promise<GoldenResult[]> {
+  const structural = cases ?? GOLDEN_SET;
   const results: GoldenResult[] = [];
-  for (const c of GOLDEN_SET) {
+  for (const c of structural) {
     try {
-      results.push({ id: c.id, title: c.title, ...(await c.run()) });
+      results.push({
+        id: c.id,
+        title: c.title,
+        kind: c.title.startsWith("BEHAVIOURAL") ? "behavioural" : "structural",
+        ...(await c.run()),
+      });
     } catch (err) {
       results.push({
         id: c.id,
         title: c.title,
+        kind: c.title.startsWith("BEHAVIOURAL") ? "behavioural" : "structural",
         status: "fail",
         detail: `threw: ${err instanceof Error ? err.message : String(err)}`,
       });

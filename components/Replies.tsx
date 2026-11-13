@@ -21,6 +21,7 @@ import {
 } from "@/lib/rules/replyIntent";
 import type { OutreachStateRow, ReplyRow } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
+import { EMPTY_STATE_REPLIES } from "@/lib/ui/emptyStates";
 
 /**
  * §6.3 — the second human checkpoint.
@@ -155,8 +156,7 @@ export function Replies({
           <CardBody className="space-y-2">
             {companies.length === 0 ? (
               <p className="text-xs text-ink-400">
-                No companies have been scored yet. Run the board first — a reply belongs to a
-                company, and there are none to attach one to.
+                {EMPTY_STATE_REPLIES}
               </p>
             ) : (
               <>

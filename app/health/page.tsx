@@ -16,6 +16,7 @@ import { PAGE_CACHE_MAX_AGE_DAYS } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 import * as q from "@/lib/db/queries";
 import { EconomicsPanel } from "@/components/Economics";
+import { EMPTY_STATE_HEALTH } from "@/lib/ui/emptyStates";
 
 export const dynamic = "force-dynamic";
 
@@ -120,7 +121,7 @@ export default async function HealthPage() {
             <p className="text-[11px] leading-snug text-ink-400">
               {run
                 ? "Nothing was refused on the last run. That is a result, not an absence of checking — every claim that fired was traced back to a page and matched."
-                : "No run yet, so there is nothing to check."}
+                : EMPTY_STATE_HEALTH}
             </p>
           ) : (
             <details className="group rounded-md border border-ink-700 bg-ink-850">

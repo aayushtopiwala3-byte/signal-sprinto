@@ -685,3 +685,29 @@ R-52 is the other one that does not suppress: the company was right and the pers
 the ladder re-runs with that person excluded and the runner-up is promoted. Suppressing the
 domain because one individual said "not me" would throw away a qualified company over a routing
 problem.
+
+### D-49 · The rebuilt self-test immediately caught the golden set drifting from the pipeline [§7]
+The first run of the new `/selftest` came back **2 failing**, and both failures were real: T-05
+and T-06 called `detectSignals` and handed the result straight to `computeVerdict`, skipping the
+tiering step. That is a path production no longer has. R-23 fails closed, so an untiered signal
+scores 0 — T-05's lone S-06 came out `score 0 → DROP` instead of HOLD, and T-06's two signals
+reported `independent_signals = 0`.
+
+The unit suite had been updated for this in Phase 2; the golden set had not. Both now route
+through `tiered()`, which is detect → tier → score in the production order. The fixtures are
+first-person on `example.com` ("We have raised…", "Our SOC 2 Type II audit…"), so R-23 tiers them
+`verified` and they score normally — the cases assert what they always meant to assert, against
+the pipeline that actually ships.
+
+This is the point of §7 arriving on schedule. A suite that only ever ran frozen fixtures through
+a frozen path reported ALL GREEN, 14 passed while the product produced eight Holds and nothing
+else. The first thing the rebuilt suite did was notice that two of its own cases had stopped
+describing the system.
+
+**T-20 is green, and it is earned.** It reads the live database: `1 Send · 4 Hold · 4 Drop across
+9 scored`. It was red before Phase 1 closed and it is not stubbed — if the board stopped
+producing Sends tomorrow, this assertion goes red on the next page load, which is precisely the
+failure F-12 described and the old suite could not see.
+
+**`skipped` is counted separately from `passed`.** A behavioural case with no run to read reports
+exactly that. The whole value of this page is that green means something.

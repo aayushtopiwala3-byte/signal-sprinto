@@ -1,5 +1,6 @@
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { runGoldenSet } from "@/lib/seed/goldenSet";
+import { GOLDEN_SET, runGoldenSet } from "@/lib/seed/goldenSet";
+import { BEHAVIOURAL_SET } from "@/lib/seed/behavioural";
 import { resolveModelId } from "@/lib/ai/model";
 import { cn } from "@/lib/utils";
 
@@ -8,22 +9,30 @@ export const dynamic = "force-dynamic";
 const TONE = { pass: "send", fail: "drop", skipped: "hold" } as const;
 
 /**
- * §12's structural assertions, run against the deployed code rather than a CI badge. A judge
- * who cannot run `npm test` can still see every rule check go green on the live URL.
+ * §7 — the assertions, run against the deployed code rather than a CI badge.
+ *
+ * Split in two on screen because the two halves answer different questions. The structural ones
+ * ask "are the rules right"; the behavioural ones ask "is the pipeline still feeding them". F-11
+ * was this page reporting ALL GREEN, 14 passed while the live board produced eight Holds and
+ * nothing else — which it could, because only the first question was ever being asked.
  */
 export default async function SelfTestPage() {
-  const results = await runGoldenSet();
+  const results = await runGoldenSet([...GOLDEN_SET, ...BEHAVIOURAL_SET]);
   const passed = results.filter((r) => r.status === "pass").length;
   const failed = results.filter((r) => r.status === "fail").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
+  const structural = results.filter((r) => r.kind === "structural");
+  const behavioural = results.filter((r) => r.kind === "behavioural");
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-4 px-4 py-4">
       <header>
         <h1 className="text-lg font-semibold tracking-tight">Self-test</h1>
         <p className="mt-0.5 text-xs text-ink-400">
-          Frozen inputs, no network, no model call, no database. Every assertion below runs on
-          this deployment at the moment you loaded the page.
+          Every assertion below runs on this deployment at the moment you loaded the page.
+          Structural cases use frozen inputs and touch nothing; behavioural cases read the live
+          database, because a suite that cannot see the pipeline fail cannot be trusted when it
+          says the pipeline is fine.
         </p>
       </header>
 
@@ -37,12 +46,42 @@ export default async function SelfTestPage() {
         <span className="font-mono text-xs text-ink-400">model: {resolveModelId()}</span>
       </div>
 
+      <Section
+        title="Structural — frozen inputs, no network, no model, no database"
+        note="These prove the rules engine is right. They were all green while the product was broken, which is why they are not the whole suite."
+        rows={structural}
+      />
+
+      <Section
+        title="Behavioural — reads the live database"
+        note="These prove the pipeline is still feeding the rules. A case that needs a run and has none reports skipped; it never borrows a pass."
+        rows={behavioural}
+      />
+    </div>
+  );
+}
+
+function Section({
+  title,
+  note,
+  rows,
+}: {
+  title: string;
+  note: string;
+  rows: Awaited<ReturnType<typeof runGoldenSet>>;
+}) {
+  const failed = rows.filter((r) => r.status === "fail").length;
+  return (
       <Card>
-        <CardHeader>
-          <CardTitle>Assertions</CardTitle>
+        <CardHeader className="flex flex-wrap items-center gap-2">
+          <CardTitle>{title}</CardTitle>
+          <Badge tone={failed === 0 ? "send" : "drop"}>
+            {failed === 0 ? `${rows.length} assertions` : `${failed} failing`}
+          </Badge>
         </CardHeader>
         <CardBody className="space-y-1.5">
-          {results.map((r) => (
+          <p className="pb-1 text-[11px] leading-snug text-ink-400">{note}</p>
+          {rows.map((r) => (
             <div
               key={r.id}
               className={cn(
@@ -64,6 +103,5 @@ export default async function SelfTestPage() {
           ))}
         </CardBody>
       </Card>
-    </div>
   );
 }
