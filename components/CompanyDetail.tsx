@@ -218,8 +218,12 @@ function VerdictSection({
         {company.missing_fields.length > 0 ? (
           <p className="text-xs text-hold">
             Still {NOT_STATED} after {company.fetches_used} extra fetches:{" "}
-            <span className="font-mono">{company.missing_fields.join(", ")}</span>. Handed off
-            rather than guessed.
+            <span className="font-mono">{company.missing_fields.join(", ")}</span>.{" "}
+            {/* R-02c (§2.4). An unknown headcount no longer hands the company off, so this line
+                must not claim it did — the gap is reported, and the verdict stood anyway. */}
+            {company.rule_fired === "R-22"
+              ? "Handed off rather than guessed."
+              : "Reported rather than guessed — R-02c does not let an unknown headcount decide the verdict."}
           </p>
         ) : null}
       </CardBody>
