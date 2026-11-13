@@ -59,9 +59,12 @@ export function DegradationBanners() {
               : "border-hold/40 bg-hold/10 text-hold",
           )}
         >
-          <span className="font-mono font-semibold">{d.variable}</span>
-          <span className="opacity-60">not set —</span>
-          <span className="min-w-0 flex-1 text-ink-300">{d.effect}</span>
+          {/* §5 — the sentence leads; the variable name is kept, small and secondary, for
+              whoever is actually going to go and set it. Leading with the identifier told a
+              reader the name of a thing they had never heard of and nothing about the
+              consequence, which is the wrong way round. */}
+          <span className="min-w-0 flex-1 text-ink-200">{d.effect}</span>
+          <span className="font-mono text-[10px] opacity-70">{d.variable} not set</span>
         </div>
       ))}
     </div>

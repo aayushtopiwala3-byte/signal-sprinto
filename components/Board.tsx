@@ -17,7 +17,9 @@ import {
 } from "@/components/ui/primitives";
 import { RulesOnlyBanner } from "@/components/SiteChrome";
 import { SIGNAL_LABEL } from "@/lib/rules/signals";
+import { cn } from "@/lib/utils";
 import { RULE_LABEL, TIER_LABEL, fieldsAsNouns } from "@/lib/ui/labels";
+import { counterfactualFor } from "@/lib/rules/counterfactual";
 import { SAMPLE_DOMAINS } from "@/lib/seed/sampleDomains";
 import {
   DEFAULT_WEIGHTS,
@@ -29,7 +31,13 @@ import {
 
 /* --------------------------------------------------------------- the shape */
 
-type SignalRow = { signal_id: string; points: number; independence_group: string };
+type SignalRow = {
+  signal_id: string;
+  points: number;
+  independence_group: string;
+  /** R-23 — an asserted signal scored nothing, so it is not evidence the counterfactual counts. */
+  tier?: string;
+};
 
 type CompanyCard = {
   id: string;
@@ -49,6 +57,10 @@ type CompanyCard = {
   error: string | null;
   signals: SignalRow[];
   missing_fields: string[];
+  /** §6.2 — the counterfactual needs to know whether we looked for a security page. */
+  security_page_checked?: boolean;
+  security_page_url?: string | null;
+  size_source?: string | null;
 };
 
 type BoardState = {
@@ -366,6 +378,23 @@ export function Board({ initial, aiAvailable }: { initial: BoardState | null; ai
           />
         ) : null}
 
+        {/* §6.1 — the tier legend belongs in the board header, not only on the card a reader
+            has already opened: `asserted` appears in verdict reasons on this page, and a chip
+            whose meaning lives one click away is a chip nobody reads. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-ink-800 bg-ink-900 px-3 py-2 text-[11px] text-ink-400">
+          <span className="font-semibold text-ink-300">Evidence tiers (R-23):</span>
+          <span className="flex items-center gap-1.5">
+            <Badge tone="send">verified</Badge> scores
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Badge tone="hold">asserted</Badge> real quote, wrong subject — scores 0
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Badge tone="drop">blocked</Badge> on no page we fetched
+          </span>
+          <span>Only verified evidence reaches a score.</span>
+        </div>
+
         <CodeLegend />
 
         {board ? (
@@ -419,7 +448,7 @@ export function Board({ initial, aiAvailable }: { initial: BoardState | null; ai
                       Nothing in {col.label} for this run.
                     </p>
                   ) : (
-                    rows.map((c) => <CompanyTile key={c.id} company={c} />)
+                    rows.map((c) => <CompanyTile key={c.id} company={c} weights={weights} />)
                   )}
                 </div>
               );
@@ -454,7 +483,25 @@ export function Board({ initial, aiAvailable }: { initial: BoardState | null; ai
 
 /* ---------------------------------------------------------------- the tile */
 
-function CompanyTile({ company: c }: { company: CompanyCard }) {
+function CompanyTile({ company: c, weights }: { company: CompanyCard; weights: Weights }) {
+  // §6.2 — computed from this company's own facts under the weights currently on screen, so
+  // moving a slider changes the advice as well as the score.
+  const scored = c.signals.filter((s) => s.points > 0 && s.tier === "verified");
+  const cf = counterfactualFor({
+    domain: c.normalized_domain,
+    verdict: c.verdict,
+    rule_fired: c.rule_fired,
+    timing_score: c.timing_score,
+    independent_signals: c.independent_signals,
+    firedSignalIds: scored.map((s) => s.signal_id as SignalId),
+    firedGroups: [...new Set(scored.map((s) => s.independence_group))],
+    weights,
+    security_page_checked: c.security_page_checked ?? false,
+    security_page_url: c.security_page_url ?? null,
+    size_band: c.size_band,
+    size_source: c.size_source ?? null,
+  });
+
   const tone = c.verdict === "SEND" ? "send" : c.verdict === "HOLD" ? "hold" : "drop";
 
   return (
@@ -470,6 +517,18 @@ function CompanyTile({ company: c }: { company: CompanyCard }) {
 
           <p className="text-[11px] leading-snug text-ink-300">
             {c.verdict_reason ?? "No reason recorded."}
+          </p>
+
+          {/* §6.2 — one line, and it is the next action rather than the reason. The verdict
+              reason above says what happened; this says what to do about it. */}
+          <p
+            className={cn(
+              "text-[11px] leading-snug",
+              cf.actionable ? "text-accent-soft" : "text-ink-500",
+            )}
+          >
+            {cf.actionable ? "Next: " : "Settled: "}
+            {cf.text}
           </p>
 
           {/* §5 — the ID is kept and the label is added beside it, so a chip reads

@@ -6,6 +6,7 @@ import { computeVerdict } from "@/lib/rules/verdict";
 import { evaluateFit } from "@/lib/rules/fit";
 import { sendToOrNull } from "@/lib/env";
 import * as q from "@/lib/db/queries";
+import { DEFAULT_WEIGHTS } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
         sends={sends}
         feedback={feedback}
         lockedTo={sendToOrNull()}
+        weights={weights ?? DEFAULT_WEIGHTS}
       />
     </div>
   );

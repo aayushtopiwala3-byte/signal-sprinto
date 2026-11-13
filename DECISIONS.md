@@ -594,3 +594,32 @@ empty array, while `emptyFields` counts the same value as *filled*. Two parts of
 disagreeing about whether something is known is exactly the failure this build exists to avoid,
 and the UI was the one that was wrong: it now reads "none found on the pages we read", and only
 `null` renders as `not stated`.
+
+### D-45 · The counterfactual is a second pass, not a replacement for the verdict's reason [§6.2]
+`what_would_change_it` already existed and already said something true. What it could not say was
+anything *specific*: every company in the same branch got the same sentence, and "10 more points
+would move this to Send" tells a reader arithmetic they can do from the number next to it.
+
+`counterfactualFor` answers the question they cannot: **which** signal is missing, what it is
+worth under the weights currently on screen, and whether we already went and looked for it. On
+atlan that comes out as *"40 points short of a Send. S-01 (Certification in progress, stated on
+their own site, +40) alone would clear it."* — a page to go and open, not a sum.
+
+Both are kept, and §0 is the reason: the verdict's own reason is the engine's record of why it
+decided what it did, and overwriting it with queue advice would lose the audit trail. The
+counterfactual sits above it; the original panel sits below.
+
+Three things that make it a queue rather than a second opinion:
+
+- **`actionable: false` is doing real work.** zerodha is dropped on R-01 and that is a finished
+  question. Labelling it *"Settled"* rather than inventing a next step is what stops someone
+  re-checking it every week. A queue where every row has an action is a queue nobody can triage.
+- **The independence case must not give arithmetic advice.** At 60 points with one group, "more
+  points" is actively wrong — the score already clears. It names the group that fired and asks
+  for one from anywhere else.
+- **It reads the weights that are on screen.** Move the S-06 slider and the advice changes with
+  the score, because the price of a missing signal is a function of the weights, not a constant.
+
+Only `verified` signals count as evidence we have. An asserted signal scored nothing, so treating
+it as "already found" would tell the reader to go looking for a signal that is sitting on the
+card marked as rejected.

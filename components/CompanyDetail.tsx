@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/primitives";
 import { SIGNAL_LABEL } from "@/lib/rules/signals";
 import { fieldsAsNouns } from "@/lib/ui/labels";
-import { NOT_STATED, type EvidenceMap, type SignalId } from "@/lib/types";
+import { counterfactualFor } from "@/lib/rules/counterfactual";
+import { NOT_STATED, type EvidenceMap, type SignalId, type Weights } from "@/lib/types";
 import type {
   ContactDbRow,
   DraftRow,
@@ -78,6 +79,8 @@ export function CompanyDetail(props: {
   sends: SendRow[];
   feedback: FeedbackRow | null;
   lockedTo: string | null;
+  /** §6.2 — the run's weights, so the counterfactual prices the signal that is missing. */
+  weights: Weights;
 }) {
   const { company } = props;
 
@@ -122,11 +125,31 @@ export function CompanyDetail(props: {
 function VerdictSection({
   company,
   whatWouldChangeIt,
+  signals,
+  weights,
 }: {
   company: CompanyView;
   whatWouldChangeIt: string | null;
+  signals: SignalRow[];
+  weights: Weights;
 }) {
   const e = company.evidence;
+  // §6.2 — only verified, scoring signals count as evidence we actually have.
+  const scored = signals.filter((s) => s.points > 0 && s.tier === "verified");
+  const cf = counterfactualFor({
+    domain: company.domain,
+    verdict: company.verdict,
+    rule_fired: company.rule_fired,
+    timing_score: company.timing_score,
+    independent_signals: company.independent_signals,
+    firedSignalIds: scored.map((s) => s.signal_id as SignalId),
+    firedGroups: [...new Set(scored.map((s) => s.independence_group))],
+    weights,
+    security_page_checked: company.security_page_checked,
+    security_page_url: company.security_page_url,
+    size_band: e.size_band,
+    size_source: e.size_source ?? null,
+  });
   return (
     <Card>
       <CardHeader className="flex items-center justify-between gap-2">
@@ -158,6 +181,44 @@ function VerdictSection({
           </span>
         </div>
 
+        {/* §6.2 — the computed next step, expanded. §0 keeps the original panel: the verdict's
+            own `what_would_change_it` is the engine's record of its reasoning and is not
+            replaced by the queue advice, it is shown under it. */}
+        <div
+          className={cn(
+            "rounded-md border px-3 py-2",
+            cf.actionable ? "border-accent/40 bg-accent/5" : "border-ink-700 bg-ink-850",
+          )}
+        >
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+            {cf.actionable ? "What would move this" : "Nothing would move this"}
+          </p>
+          <p className="text-xs leading-relaxed text-ink-100">{cf.text}</p>
+          {cf.suggestedUrl ? (
+            <a
+              href={cf.suggestedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block font-mono text-[11px] text-accent-soft underline"
+            >
+              {cf.suggestedUrl} ↗
+            </a>
+          ) : null}
+          {cf.override === "size_band" ? (
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-400">
+              Company size is the field this verdict turned on. It is recorded as{" "}
+              <span className="font-mono text-ink-200">{e.size_band ?? NOT_STATED}</span>
+              {e.size_source ? (
+                <>
+                  {" "}
+                  (<span className="font-mono">{e.size_source}</span>)
+                </>
+              ) : null}
+              . Re-running this company alone re-reads the page it came from.
+            </p>
+          ) : null}
+        </div>
+
         {whatWouldChangeIt ? (
           <div className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2">
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
@@ -165,8 +226,6 @@ function VerdictSection({
             </p>
             <p className="text-xs leading-relaxed text-ink-200">{whatWouldChangeIt}</p>
           </div>
-        ) : company.verdict === "SEND" ? (
-          <p className="text-xs text-send">Nothing is holding this back. It is ready to send.</p>
         ) : null}
 
         <div className="grid gap-2 sm:grid-cols-2">
