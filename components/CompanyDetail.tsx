@@ -16,6 +16,7 @@ import {
   Textarea,
 } from "@/components/ui/primitives";
 import { SIGNAL_LABEL } from "@/lib/rules/signals";
+import { fieldsAsNouns } from "@/lib/ui/labels";
 import { NOT_STATED, type EvidenceMap, type SignalId } from "@/lib/types";
 import type {
   ContactDbRow,
@@ -170,24 +171,37 @@ function VerdictSection({
 
         <div className="grid gap-2 sm:grid-cols-2">
           <EvidenceFact
-            label="B2B SaaS"
+            label="Do they sell software to businesses?"
+            code="is_b2b_saas"
             value={e.is_b2b_saas === null ? null : e.is_b2b_saas ? "yes" : "no"}
             quote={e.is_b2b_saas_evidence}
           />
           <EvidenceFact
-            label="Headcount band"
+            label="How big are they?"
+            code="size_band"
             value={e.size_band}
             quote={e.size_band_evidence}
             provenance={SIZE_SOURCE_NOTE[e.size_source ?? ""] ?? null}
           />
           <EvidenceFact
-            label="Certification"
+            label="Are they already certified?"
+            code="cert_status"
             value={e.cert_status}
             quote={e.cert_status_evidence}
           />
           <EvidenceFact
-            label="Pressure signals"
-            value={e.pressure_signals?.length ? e.pressure_signals.join(", ") : null}
+            label="Is there compliance pressure?"
+            code="pressure_signals"
+            // An empty array is an answer — we read the pages and found none. Only null means
+            // the field was never filled, and `emptyFields` already draws that line, so the
+            // card must draw it the same way or it contradicts the engine it is reporting.
+            value={
+              e.pressure_signals === null
+                ? null
+                : e.pressure_signals.length > 0
+                  ? e.pressure_signals.join(", ")
+                  : "none found on the pages we read"
+            }
             quote={null}
           />
         </div>
@@ -218,8 +232,13 @@ function VerdictSection({
 
         {company.missing_fields.length > 0 ? (
           <p className="text-xs text-hold">
-            Still {NOT_STATED} after {company.fetches_used} extra fetches:{" "}
-            <span className="font-mono">{company.missing_fields.join(", ")}</span>.{" "}
+            Still unknown after {company.fetches_used} extra fetches:{" "}
+            <span title={company.missing_fields.join(", ")}>
+              {fieldsAsNouns(company.missing_fields)}
+            </span>
+            {" ("}
+            <span className="font-mono text-[10px]">{company.missing_fields.join(", ")}</span>
+            {"). "}
             {/* R-02c (§2.4). An unknown headcount no longer hands the company off, so this line
                 must not claim it did — the gap is reported, and the verdict stood anyway. */}
             {company.rule_fired === "R-22"
@@ -247,18 +266,23 @@ function EvidenceFact({
   value,
   quote,
   provenance,
+  code,
 }: {
   label: string;
   value: string | null;
   quote: { quote: string; url: string } | null;
   /** Optional sentence explaining where the value came from when there is no quote to show. */
   provenance?: string | null;
+  /** §5 — the Evidence Map field name, kept beside the question rather than replaced by it. */
+  code?: string;
 }) {
   return (
     <div className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
-          {label}
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0">
+          {/* §5 — the Evidence Map is a set of questions, so it is shown as questions. */}
+          <span className="block text-[11px] font-medium leading-snug text-ink-300">{label}</span>
+          {code ? <span className="font-mono text-[10px] text-ink-500">{code}</span> : null}
         </span>
         {/* An inferred value never gets a quote chip: there is no sentence behind it. */}
         {quote ? <QuoteChip url={quote.url} /> : <AiChip />}

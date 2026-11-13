@@ -141,12 +141,19 @@ export function Switch({
   label,
   hint,
   id,
+  code,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   hint?: string;
   id?: string;
+  /**
+   * §5 — the switch's key in the config, e.g. `strict_icp`. Rendered small and monospace
+   * beside the human label, never instead of it: a judge who wants the identifier gets it,
+   * and one who does not is not taxed by it.
+   */
+  code?: string;
 }) {
   return (
     <label htmlFor={id} className="flex cursor-pointer items-start gap-2.5 py-1">
@@ -170,7 +177,10 @@ export function Switch({
         />
       </button>
       <span className="min-w-0">
-        <span className="block text-xs font-medium text-ink-100">{label}</span>
+        <span className="flex flex-wrap items-baseline gap-1.5">
+          <span className="text-xs font-medium text-ink-100">{label}</span>
+          {code ? <span className="font-mono text-[10px] text-ink-500">{code}</span> : null}
+        </span>
         {hint ? <span className="block text-[11px] leading-snug text-ink-400">{hint}</span> : null}
       </span>
     </label>

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/primitives";
 import { RulesOnlyBanner } from "@/components/SiteChrome";
 import { SIGNAL_LABEL } from "@/lib/rules/signals";
+import { RULE_LABEL, TIER_LABEL, fieldsAsNouns } from "@/lib/ui/labels";
 import { SAMPLE_DOMAINS } from "@/lib/seed/sampleDomains";
 import {
   DEFAULT_WEIGHTS,
@@ -319,26 +320,32 @@ export function Board({ initial, aiAvailable }: { initial: BoardState | null; ai
             <CardTitle>Switches</CardTitle>
           </CardHeader>
           <CardBody>
+            {/* §5 — human label first, config key kept beside it in small monospace. The IDs
+                are the defensibility of this build and are never replaced, only accompanied. */}
             <Switch
-              label="strict_icp"
-              hint="Drop already-certified companies instead of routing them to the migration play."
+              label="Drop already-certified companies"
+              code="strict_icp"
+              hint="On: a company that already holds the certification is dropped. Off: it is routed to the migration play instead."
               checked={switches.strict_icp}
               onChange={(v) => setSwitches((s) => ({ ...s, strict_icp: v }))}
             />
             <Switch
-              label="ai_enabled"
-              hint="Off: extraction falls back to keyword matching and no drafts are written. Verdicts still come from the rules engine."
+              label="Use AI to read pages"
+              code="ai_enabled"
+              hint="Off: pages are read by keyword matching and no emails are written. Every verdict still comes from the rules, which never use AI."
               checked={switches.ai_enabled}
               onChange={(v) => setSwitches((s) => ({ ...s, ai_enabled: v }))}
             />
             <Switch
-              label="reader_enabled"
-              hint="Off: skip the r.jina.ai tier-2 fallback for thin pages."
+              label="Deep-read JavaScript-heavy sites"
+              code="reader_enabled"
+              hint="Off: skip the reader service that renders JavaScript pages, so a site that needs it is read thinly or not at all."
               checked={switches.reader_enabled}
               onChange={(v) => setSwitches((s) => ({ ...s, reader_enabled: v }))}
             />
             <Switch
-              label="auto_send"
+              label="Send without asking me"
+              code="auto_send"
               hint="Off: every send needs a click. Signal never emails anyone on its own."
               checked={switches.auto_send}
               onChange={(v) => setSwitches((s) => ({ ...s, auto_send: v }))}
@@ -358,6 +365,8 @@ export function Board({ initial, aiAvailable }: { initial: BoardState | null; ai
             }
           />
         ) : null}
+
+        <CodeLegend />
 
         {board ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -463,15 +472,21 @@ function CompanyTile({ company: c }: { company: CompanyCard }) {
             {c.verdict_reason ?? "No reason recorded."}
           </p>
 
-          <div className="flex flex-wrap items-center gap-1">
-            {c.rule_fired ? <Badge tone="neutral">{c.rule_fired}</Badge> : null}
+          {/* §5 — the ID is kept and the label is added beside it, so a chip reads
+              `S-05 · enterprise security review` rather than `S-05` and a tooltip nobody
+              hovers. The label sits outside the Badge because Badge uppercases its contents,
+              and a sentence in capitals is less readable than the code it was meant to explain. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {c.rule_fired ? <CodeChip id={c.rule_fired} label={RULE_LABEL[c.rule_fired]} /> : null}
             {c.play === "migration" ? <Badge tone="accent">migration</Badge> : null}
             {c.signals
               .filter((s) => s.points > 0)
               .map((s) => (
-                <Badge key={s.signal_id} tone="neutral" title={SIGNAL_LABEL[s.signal_id as SignalId]}>
-                  {s.signal_id}
-                </Badge>
+                <CodeChip
+                  key={s.signal_id}
+                  id={s.signal_id}
+                  label={SIGNAL_LABEL[s.signal_id as SignalId]}
+                />
               ))}
           </div>
 
@@ -479,7 +494,9 @@ function CompanyTile({ company: c }: { company: CompanyCard }) {
             <span>{c.independent_signals ?? 0} independent</span>
             <span>{c.fetches_used}/4 extra fetches</span>
             {c.missing_fields.length > 0 ? (
-              <span className="text-hold">missing: {c.missing_fields.join(", ")}</span>
+              <span className="text-hold" title={c.missing_fields.join(", ")}>
+                still unknown: {fieldsAsNouns(c.missing_fields)}
+              </span>
             ) : null}
           </div>
         </CardBody>
@@ -528,5 +545,86 @@ function EmptyBoard() {
         </p>
       </CardBody>
     </Card>
+  );
+}
+
+/* ------------------------------------------------- §5 · "What do these codes mean?" */
+
+/**
+ * The full rules and signals table, collapsed by default.
+ *
+ * §5's constraint is that the IDs stay. The cost of keeping them is that a reader who does not
+ * know them is looking at jargon, and the cost of removing them is that the build loses the
+ * thing that makes a verdict checkable. A disclosure pays neither: the IDs are on every card,
+ * and the key to them is one click away rather than in the README.
+ */
+function CodeLegend() {
+  const fitRules = ["R-01", "R-02a", "R-02b", "R-02c", "R-03", "R-04"];
+  const verdictRules = ["R-20", "R-21", "R-22", "R-23", "R-30", "R-40"];
+
+  return (
+    <details className="rounded-md border border-ink-700 bg-ink-850">
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs text-ink-300 marker:text-ink-500">
+        What do these codes mean?
+      </summary>
+      <div className="space-y-3 border-t border-ink-700 px-3 py-3">
+        <LegendBlock
+          title="Fit rules — is this company worth writing to at all?"
+          rows={fitRules.map((id) => [id, RULE_LABEL[id] ?? id] as const)}
+        />
+        <LegendBlock
+          title="Verdict rules — what the evidence adds up to"
+          rows={verdictRules.map((id) => [id, RULE_LABEL[id] ?? id] as const)}
+        />
+        <LegendBlock
+          title="Timing signals — what we look for, and what each is worth"
+          rows={(Object.keys(SIGNAL_LABEL) as SignalId[]).map(
+            (id) => [id, SIGNAL_LABEL[id]] as const,
+          )}
+        />
+        <LegendBlock
+          title="Evidence tiers — only verified evidence scores (R-23)"
+          rows={(["verified", "asserted", "fabricated"] as const).map(
+            (t) => [t, TIER_LABEL[t]] as const,
+          )}
+        />
+        <p className="text-[11px] leading-snug text-ink-400">
+          Every verdict on this board was decided by one of these rules in plain code, not by a
+          model. The model writes prose and reads pages; it never decides.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+function LegendBlock({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: readonly (readonly [string, string])[];
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold text-ink-200">{title}</p>
+      <div className="space-y-0.5">
+        {rows.map(([id, label]) => (
+          <div key={id} className="flex items-baseline gap-2">
+            <span className="w-14 shrink-0 font-mono text-[10px] text-accent-soft">{id}</span>
+            <span className="text-[11px] leading-snug text-ink-300">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** §5 — an ID badge with its human label beside it, in normal case. */
+function CodeChip({ id, label }: { id: string; label?: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <Badge tone="neutral">{id}</Badge>
+      {label ? <span className="text-[10px] leading-snug text-ink-400">{label}</span> : null}
+    </span>
   );
 }

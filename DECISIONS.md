@@ -571,3 +571,26 @@ reload, days later — which is the only time anyone actually goes looking.
 A send where no transport was even attempted (the recipient lock itself refused) still writes a
 row, under transport `none`. A failure that leaves no trace looks the same as a send that never
 happened.
+
+### D-44 · Labels go beside the IDs, never instead of them, and never inside a Badge [§5]
+§5's rule is that every rule and signal ID stays and gains a human label. The first attempt put
+the label inside the `Badge` component, which produced
+`R-20 · TIMING SCORE DECIDES IT: 50+ SENDS, 20-49 HOLDS, UNDER 20 DROPS` — Badge sets
+`uppercase`, and a sentence in capitals is harder to read than the code it was meant to explain.
+The label now sits outside the badge in normal case (`CodeChip`), which is also why the ID keeps
+its visual weight: it is still the thing you cite when you want to check a verdict.
+
+`lib/ui/labels.ts` holds the labels in one place. The alternative — inlining them at each site —
+would let the board, the company card and the health page drift into calling `size_band` three
+different things, and the whole point of the pass is that a reader meets one vocabulary.
+
+Two labels per field, not one. `FIELD_QUESTION` for headings, because the Evidence Map is a set
+of questions and reads naturally as them; `FIELD_NOUN` for running text, because *"still unknown:
+How big are they?"* does not parse. The raw field name stays in a `title` attribute and in small
+monospace beside the humanised list.
+
+**`pressure_signals: []` is an answer, not a gap.** The card was rendering `not stated` for an
+empty array, while `emptyFields` counts the same value as *filled*. Two parts of the system
+disagreeing about whether something is known is exactly the failure this build exists to avoid,
+and the UI was the one that was wrong: it now reads "none found on the pages we read", and only
+`null` renders as `not stated`.

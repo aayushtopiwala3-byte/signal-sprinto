@@ -131,8 +131,10 @@ export function degradations(): Degradation[] {
   if (!capability.gmail() && !capability.resend()) {
     out.push({
       variable: "GOOGLE_REFRESH_TOKEN",
+      // §5 (F-10). The old wording named the variable and described the plumbing. What a reader
+      // needs to know is what still works and what will happen if they press the button.
       effect:
-        "No send transport is configured. Drafts are produced and validated but Approve & send will fail loudly rather than pretend.",
+        "Email sending isn't connected yet. Drafts are still written and checked — Approve & send will report the failure rather than pretend.",
       level: "warn",
     });
   }
