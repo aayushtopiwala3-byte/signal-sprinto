@@ -53,10 +53,26 @@ export async function POST(request: Request) {
   // T-24 — a company you rejected with a reason does not come back. It is quarantined with
   // your own words attached, rather than silently dropped from the list.
   const suppressed = await q.suppressedDomains();
+  // §6.3 — R-54's block, R-53's suppression and R-50's win, applied here rather than later.
+  // The gate has to sit before `insertCompany` or a blocked domain would be queued and then
+  // fetched, which is the one thing "they asked not to be contacted" cannot mean.
+  const blocked = await q.blockedDomains();
   const queued: string[] = [];
   const skipped: { domain: string; reason: string }[] = [];
 
   for (const { domain, raw } of batch.domains) {
+    const block = blocked.get(domain);
+    if (block) {
+      await q.insertQuarantine({
+        runId,
+        domain,
+        reasonCode: block.rule === "R-54" ? "unsubscribed" : "suppressed",
+        reasonText: block.reason,
+      });
+      skipped.push({ domain, reason: block.reason });
+      continue;
+    }
+
     const reason = suppressed.get(domain);
     if (reason) {
       const text = `Suppressed by your feedback: ${reason}`;

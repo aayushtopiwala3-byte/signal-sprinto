@@ -642,3 +642,46 @@ figure quietly becomes wrong.
 
 Zero Sends renders as *"no Sends on this run — the cost is real and the number of Sends is zero"*
 rather than a dash. A division that cannot be performed is a finding about the run.
+
+### D-47 · A model may not reach an irreversible action by inference [§6.3]
+R-54 permanently blocks a domain, and nothing in the interface undoes it. That single fact
+decided the whole design of the reply loop.
+
+**The quote guard runs before the rules see the intent.** AI-5 must return a sentence that
+appears verbatim in the pasted reply; if it does not, the intent is forced to `unclear`, which is
+the one intent with no consequence attached. So the path to a permanent block requires the sender
+to have actually written something that says so — an inferred `unsubscribe` cannot get there.
+Same rule as R-23, same reason, and `tests/replyIntent.test.ts` asserts it directly: an invented
+quote on an `unsubscribe` comes back as `unclear` with `requiresTypedConfirmation: false`.
+
+**Classify and apply are separate endpoints.** There is no code path where reading a reply also
+acts on it. A checkpoint that the same request can skip is a dialog, not a checkpoint.
+
+**The typed confirmation is enforced server-side.** The button disables without the phrase, and
+the API refuses it again — a confirmation enforced only in the browser is not enforced. Verified
+against the running app: a wrong phrase returns 400 and writes nothing.
+
+**A block cannot be overwritten.** `setOutreachState` refuses to move a domain out of `block`, so
+a later misclassification cannot quietly un-block someone who asked not to be contacted. The
+asymmetry is deliberate: the error that matters is contacting someone who opted out, not failing
+to re-contact someone who did.
+
+**The prompt is told to prefer `unclear`**, and the reason is given in the prompt itself: being
+wrong toward `unclear` costs a human ten seconds, being wrong toward `unsubscribe` permanently
+blocks a company that never asked to be blocked. Where prompt and guard disagree, the guard wins.
+
+### D-48 · A snooze is not a suppression [§6.3]
+R-51 was the easiest rule to get subtly wrong. "Check back next quarter" is the warmest no in
+outbound, and folding it into the suppression list would silently lose exactly the companies
+worth returning to.
+
+`blockedDomains` therefore covers `block`, `suppress` and `won` and deliberately excludes
+`snooze`. A snoozed company is still fetched, still scored and still on the board; it carries a
+return date and ranks below live prospects. The gate sits in `/api/run/start` **before**
+`insertCompany`, because a blocked domain that gets queued and then fetched has already been
+contacted in every sense that matters.
+
+R-52 is the other one that does not suppress: the company was right and the person was not, so
+the ladder re-runs with that person excluded and the runner-up is promoted. Suppressing the
+domain because one individual said "not me" would throw away a qualified company over a routing
+problem.

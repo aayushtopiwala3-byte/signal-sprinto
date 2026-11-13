@@ -276,6 +276,46 @@ CREATE TABLE IF NOT EXISTS page_cache (
 ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS links_json TEXT;
 ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS job_links_json TEXT;
 
+-- §6.3 — every reply that was pasted in, classified and acted on.
+--
+-- The raw text is kept because the quote guard is checked against it: a classification whose
+-- supporting sentence cannot be found in the reply is forced to `unclear`, and that check has to
+-- be re-runnable later, not just at the moment the paste happened.
+CREATE TABLE IF NOT EXISTS replies (
+  id           TEXT PRIMARY KEY,
+  company_id   TEXT NOT NULL,
+  domain       TEXT NOT NULL,
+  raw_text     TEXT NOT NULL,
+  -- AI-5's reading, after the quote guard has had its say.
+  intent       TEXT NOT NULL,
+  confidence   DOUBLE PRECISION NOT NULL DEFAULT 0,
+  quote        TEXT,
+  -- Set when the quote guard overrode the model, with the reason it did.
+  downgraded   BOOLEAN NOT NULL DEFAULT false,
+  downgrade_reason TEXT,
+  rule_fired   TEXT NOT NULL,
+  effect       TEXT NOT NULL,
+  applied      BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS replies_company_idx ON replies (company_id);
+
+-- §6.3 — what a reply did to a domain's future.
+--
+-- One row per domain, replaced on each new decision, because what matters to the next run is the
+-- current state and not the history (which `replies` keeps). `until` NULL together with
+-- kind = 'block' is R-54's permanent case: there is no date at which it lapses, and no UI path
+-- that deletes the row.
+CREATE TABLE IF NOT EXISTS outreach_state (
+  domain     TEXT PRIMARY KEY,
+  -- 'won' | 'snooze' | 'suppress' | 'block'
+  kind       TEXT NOT NULL,
+  rule       TEXT NOT NULL,
+  reason     TEXT,
+  until      TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Hunter Domain Search cache, so repeat domains never cost a second credit (§4.1, T-02).
 CREATE TABLE IF NOT EXISTS hunter_cache (
   domain        TEXT PRIMARY KEY,

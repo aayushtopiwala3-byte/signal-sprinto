@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Board" },
+  { href: "/replies", label: "Replies" },
   { href: "/quarantine", label: "Quarantine" },
   { href: "/health", label: "Health" },
   { href: "/selftest", label: "Self-test" },

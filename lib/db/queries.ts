@@ -794,6 +794,122 @@ export async function feedbackForCompany(companyId: string): Promise<FeedbackRow
     SELECT * FROM feedback WHERE company_id = ${companyId} ORDER BY created_at DESC LIMIT 1`;
 }
 
+/* ------------------------------------------------- §6.3 replies & outreach state */
+
+export type ReplyRow = {
+  id: string;
+  company_id: string;
+  domain: string;
+  raw_text: string;
+  intent: string;
+  confidence: number;
+  quote: string | null;
+  downgraded: boolean;
+  downgrade_reason: string | null;
+  rule_fired: string;
+  effect: string;
+  applied: boolean;
+  created_at: string;
+};
+
+export async function insertReply(input: {
+  companyId: string;
+  domain: string;
+  rawText: string;
+  intent: string;
+  confidence: number;
+  quote: string | null;
+  downgraded: boolean;
+  downgradeReason: string | null;
+  ruleFired: string;
+  effect: string;
+  applied: boolean;
+}): Promise<string> {
+  const id = newId("rp");
+  await sql`
+    INSERT INTO replies (id, company_id, domain, raw_text, intent, confidence, quote,
+                         downgraded, downgrade_reason, rule_fired, effect, applied)
+    VALUES (${id}, ${input.companyId}, ${input.domain}, ${input.rawText}, ${input.intent},
+            ${input.confidence}, ${input.quote}, ${input.downgraded}, ${input.downgradeReason},
+            ${input.ruleFired}, ${input.effect}, ${input.applied})`;
+  return id;
+}
+
+export async function listReplies(limit = 50): Promise<ReplyRow[]> {
+  return sql<ReplyRow>`SELECT * FROM replies ORDER BY created_at DESC LIMIT ${limit}`;
+}
+
+export type OutreachStateRow = {
+  domain: string;
+  kind: string;
+  rule: string;
+  reason: string | null;
+  until: string | null;
+  created_at: string;
+};
+
+/**
+ * R-54 is permanent, and this is where that is enforced rather than promised.
+ *
+ * A domain already blocked cannot be moved to any other state — not by a later reply, not by a
+ * misclassification, not by anything this interface can do. Everything else replaces freely.
+ */
+export async function setOutreachState(input: {
+  domain: string;
+  kind: "won" | "snooze" | "suppress" | "block";
+  rule: string;
+  reason: string | null;
+  until: Date | null;
+}): Promise<{ applied: boolean; blockedAlready: boolean }> {
+  const existing = await one<OutreachStateRow>`
+    SELECT * FROM outreach_state WHERE domain = ${input.domain}`;
+  if (existing?.kind === "block") return { applied: false, blockedAlready: true };
+
+  await sql`
+    INSERT INTO outreach_state (domain, kind, rule, reason, until)
+    VALUES (${input.domain}, ${input.kind}, ${input.rule}, ${input.reason},
+            ${input.until ? input.until.toISOString() : null})
+    ON CONFLICT (domain) DO UPDATE
+      SET kind = EXCLUDED.kind, rule = EXCLUDED.rule, reason = EXCLUDED.reason,
+          until = EXCLUDED.until, created_at = now()`;
+  return { applied: true, blockedAlready: false };
+}
+
+export async function listOutreachState(): Promise<OutreachStateRow[]> {
+  return sql<OutreachStateRow>`SELECT * FROM outreach_state ORDER BY created_at DESC`;
+}
+
+/**
+ * The states that stop a domain being fetched on a future run.
+ *
+ * A snooze is deliberately absent: §6.3 says it re-ranks but does not suppress, so a snoozed
+ * company is still read and still scored — it simply sorts below live prospects. Treating it as
+ * a suppression here would be the easy mistake and would quietly lose companies that said
+ * "ask me next quarter".
+ */
+export async function blockedDomains(): Promise<Map<string, { rule: string; reason: string }>> {
+  const rows = await sql<OutreachStateRow>`
+    SELECT * FROM outreach_state
+    WHERE kind IN ('block', 'suppress', 'won')
+      AND (until IS NULL OR until > now())`;
+  return new Map(
+    rows.map((r) => [
+      r.domain,
+      {
+        rule: r.rule,
+        reason:
+          r.kind === "block"
+            ? `${r.rule}: they asked not to be contacted again. This block is permanent.`
+            : r.kind === "won"
+              ? `${r.rule}: already replied with interest — handed to a human, not re-sent.`
+              : `${r.rule}: ${r.reason ?? "suppressed after a reply"}${
+                  r.until ? ` until ${new Date(r.until).toISOString().slice(0, 10)}` : ""
+                }.`,
+      },
+    ]),
+  );
+}
+
 /* -------------------------------------------------------------- quarantine */
 
 export type QuarantineRow = {
