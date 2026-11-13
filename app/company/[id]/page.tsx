@@ -92,7 +92,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           from_cache: f.from_cache ?? false,
           delay_ms: f.delay_ms ?? 0,
         }))}
-        alreadySent={sends.some((s) => s.status === "sent")}
+        sends={sends}
         feedback={feedback}
         lockedTo={sendToOrNull()}
       />

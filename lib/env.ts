@@ -66,6 +66,12 @@ export const env = {
   googleRefreshToken: () => read("GOOGLE_REFRESH_TOKEN"),
   resendApiKey: () => read("RESEND_API_KEY"),
   emailFrom: () => read("EMAIL_FROM"),
+  /**
+   * §4.4 — the name the draft signs off with. `Growth Lead at Sprinto` was hardcoded into the
+   * prompt, so every email went out signed by a job title nobody holds. Falls back to that same
+   * string rather than throwing: an unset name degrades the signature, it does not stop a run.
+   */
+  senderName: () => read("SENDER_NAME") ?? "the Growth Lead at Sprinto",
   siteUrl: () => read("NEXT_PUBLIC_SITE_URL"),
   costCeilingUsd: () => {
     const raw = read("AI_COST_CEILING_USD");

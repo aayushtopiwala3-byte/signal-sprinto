@@ -23,6 +23,7 @@ import type {
   FeedbackRow,
   LoopTraceRow,
   PainPointRow,
+  SendRow,
   SignalRow,
 } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
@@ -73,7 +74,7 @@ export function CompanyDetail(props: {
   pains: PainPointRow[];
   draft: DraftRow | null;
   fetches: FetchView[];
-  alreadySent: boolean;
+  sends: SendRow[];
   feedback: FeedbackRow | null;
   lockedTo: string | null;
 }) {
@@ -107,7 +108,7 @@ export function CompanyDetail(props: {
       <DraftSection
         draft={props.draft}
         lockedTo={props.lockedTo}
-        alreadySent={props.alreadySent}
+        sends={props.sends}
         contact={props.contacts.find((c) => c.selected) ?? null}
       />
       <FeedbackSection companyId={company.id} existing={props.feedback} domain={company.domain} />
@@ -658,12 +659,12 @@ function PainSection({ pains }: { pains: PainPointRow[] }) {
 function DraftSection({
   draft,
   lockedTo,
-  alreadySent,
+  sends,
   contact,
 }: {
   draft: DraftRow | null;
   lockedTo: string | null;
-  alreadySent: boolean;
+  sends: SendRow[];
   contact: ContactDbRow | null;
 }) {
   const router = useRouter();
@@ -675,6 +676,13 @@ function DraftSection({
   const [error, setError] = useState<string | null>(null);
   const [validated, setValidated] = useState(draft?.validated ?? false);
   const [blocked, setBlocked] = useState(draft?.blocked_reason ?? null);
+
+  // §4.2 — the transport that actually carried the email, read back from the send row rather
+  // than from the in-session note, so it survives a reload. A fallback must never be mistaken
+  // for the primary path, which means the card has to say which one ran even days later.
+  const sent = sends.find((s) => s.status === "sent") ?? null;
+  const alreadySent = sent !== null;
+  const failedSends = sends.filter((s) => s.status !== "sent");
 
   if (!draft) {
     return (
@@ -805,6 +813,39 @@ function DraftSection({
 
         {error ? <p className="text-xs text-drop">{error}</p> : null}
         {note ? <p className="text-xs text-send">{note}</p> : null}
+
+        {/* §4.2 — the transport is part of the record, not a detail of the moment it was sent.
+            Gmail is the primary path; Resend only ever runs because Gmail did not, so when it
+            is the one that carried the email the card says why. */}
+        {sent ? (
+          <div className="rounded-md border border-send/40 bg-send/10 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="send">sent</Badge>
+              <span className="font-mono text-[11px] text-ink-100">
+                sent via: {sent.transport}
+                {failedSends.length > 0
+                  ? ` (${failedSends[0].transport}: ${failedSends[0].error ?? "no reason recorded"})`
+                  : ""}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-ink-300">
+              To <span className="font-mono">{sent.to_address}</span> at{" "}
+              {new Date(sent.sent_at).toISOString()}.
+            </p>
+          </div>
+        ) : failedSends.length > 0 ? (
+          <div className="rounded-md border border-drop/40 bg-drop/10 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="drop">send failed</Badge>
+              <span className="font-mono text-[11px] text-ink-100">
+                attempted via: {failedSends[0].transport}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-ink-300">
+              {failedSends[0].error ?? "No reason was recorded."}
+            </p>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
           {editing ? (

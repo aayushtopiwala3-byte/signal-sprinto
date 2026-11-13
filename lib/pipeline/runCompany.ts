@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 import { runCostUsd, aiCall } from "@/lib/ai/call";
 import { PainPointsSchema, buildPainPointsPrompt } from "@/lib/ai/prompts/painPoints";
 import { DraftSchema, buildDraftPrompt } from "@/lib/ai/prompts/draft";
@@ -25,6 +26,7 @@ import { findContacts, peekHunterMeta } from "@/lib/hunter/client";
 import { evaluateFit } from "@/lib/rules/fit";
 import { detectSignals, type PageRecord } from "@/lib/rules/signals";
 import { tierAllSignals, tierDraft, tierPainPoints } from "@/lib/rules/evidenceTier";
+import { checkSubject, subjectRetryNote } from "@/lib/rules/subject";
 import { computeVerdict } from "@/lib/rules/verdict";
 import type { VerdictResult } from "@/lib/types";
 import { selectContact, isGeneric, displayName } from "@/lib/rules/poc";
@@ -720,24 +722,46 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         blocked_reason: `No draft: this domain used ${Math.round(elapsed() / 1000)}s of the handler's budget on fetching, leaving no room to write one. The verdict and its evidence above are complete; re-running this company alone will produce the draft.`,
       });
     } else {
-      const draftResult = await aiCall({
+      const draftPrompt = buildDraftPrompt({
+        domain,
+        senderName: env.senderName(),
+        contactName,
+        contactTitle,
+        signals: result.fired_signals,
+        painPoints: validatedPoints.map((p) => ({
+          text: p.text,
+          quote: p.quote,
+          url: p.source_url,
+        })),
+        play: result.play,
+        pages: sources,
+      });
+
+      let draftResult = await aiCall({
         callName: "AI-4 draft",
-        prompt: buildDraftPrompt({
-          domain,
-          contactName,
-          contactTitle,
-          signals: result.fired_signals,
-          painPoints: validatedPoints.map((p) => ({
-            text: p.text,
-            quote: p.quote,
-            url: p.source_url,
-          })),
-          play: result.play,
-          pages: sources,
-        }),
+        prompt: draftPrompt,
         schema: DraftSchema,
         ...ai,
       });
+
+      // R-40 (§4.3, F-9). The prompt asks for a well-formed subject; this is what happens when
+      // it does not get one. Exactly one retry, and only when there is budget left for it — a
+      // subject that is merely ugly is not worth risking the handler's deadline over, and the
+      // draft is still shown with the problems named either way.
+      if (draftResult.ok) {
+        const subjectCheck = checkSubject(draftResult.data.subject);
+        if (!subjectCheck.ok && timeLeftMs(elapsed()) > AI_CALL_RESERVE_MS) {
+          const retry = await aiCall({
+            callName: "AI-4 draft (subject retry)",
+            prompt: `${draftPrompt}\n\n${subjectRetryNote(subjectCheck)}`,
+            schema: DraftSchema,
+            ...ai,
+          });
+          // Keep the retry only if it actually fixed the subject. A second bad subject is not
+          // an improvement, and silently preferring the newer one would hide that R-40 failed.
+          if (retry.ok && checkSubject(retry.data.subject).ok) draftResult = retry;
+        }
+      }
 
       if (!draftResult.ok) {
         await q.replaceDraft(companyId, {

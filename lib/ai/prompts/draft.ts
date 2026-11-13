@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { NEVER_FABRICATE, jsonOnly } from "@/lib/ai/prompts/shared";
 import { MIN_QUOTE_CHARS } from "@/lib/rules/evidenceValidator";
+import {
+  SUBJECT_MAX_CHARS,
+  SUBJECT_MAX_WORDS,
+  SUBJECT_MIN_WORDS,
+} from "@/lib/rules/subject";
 import type { FiredSignal, Play } from "@/lib/types";
 
 /**
@@ -21,7 +26,7 @@ export const DraftSchema = z.object({
 export type DraftOutput = z.infer<typeof DraftSchema>;
 
 const SHAPE = `{
-  "subject": "under 60 characters, lower-case, specific",
+  "subject": "sentence case, 4-9 words, under 60 characters, ending on a noun",
   "body": "the email body, under 150 words, signed off as the Growth Lead",
   "hook_quote": "the verbatim sentence from their site that the first line references",
   "hook_url": "the page URL that quote came from"
@@ -34,6 +39,8 @@ const PLAY_BRIEF: Record<Play, string> = {
 
 export function buildDraftPrompt(input: {
   domain: string;
+  /** §4.4 — from SENDER_NAME, never hardcoded into the prompt. */
+  senderName: string;
   contactName: string;
   contactTitle: string;
   signals: FiredSignal[];
@@ -56,7 +63,7 @@ export function buildDraftPrompt(input: {
     .map((p) => `### SOURCE ${p.url}\n"""\n${p.text}\n"""`)
     .join("\n\n");
 
-  return `Write one cold email to ${input.contactName}, ${input.contactTitle} at ${input.domain}, from the Growth Lead at Sprinto (compliance automation for SOC 2 and ISO 27001).
+  return `Write one cold email to ${input.contactName}, ${input.contactTitle} at ${input.domain}, from ${input.senderName} at Sprinto (compliance automation for SOC 2 and ISO 27001).
 
 PLAY: ${input.play}
 ${PLAY_BRIEF[input.play]}
@@ -72,8 +79,9 @@ Hard constraints:
 - The FIRST SENTENCE must reference a specific fact about ${input.domain} drawn from the quotes above. Not a compliment, not a generality.
 - No superlatives. No "I hope this finds you well". No "I wanted to reach out". No "game-changing", "revolutionary", "best-in-class".
 - One clear ask at the end, low commitment.
-- Sign off as the Growth Lead at Sprinto.
+- Sign off as ${input.senderName}.
 - Plain text. No markdown, no bullet points.
+- The subject line is sentence case: capitalise the first word and proper nouns only. Not all-lowercase, not Title Case. Between ${SUBJECT_MIN_WORDS} and ${SUBJECT_MAX_WORDS} words, at most ${SUBJECT_MAX_CHARS} characters, and it must end on the noun it is about — never on "for", "to", "with", "the" or any other word that leaves the phrase hanging.
 
 SOURCES:
 ${corpus}

@@ -40,13 +40,42 @@ export async function POST(request: Request) {
 
   const outcome = await sendEmail({ subject: draft.subject, body: draft.body });
 
-  await q.insertSend({
-    draftId,
-    toAddress: outcome.to ?? "unknown",
-    transport: outcome.ok ? outcome.transport : "none",
-    status: outcome.ok ? "sent" : "failed",
-    error: outcome.ok ? null : outcome.error,
-  });
+  // §4.2 — one row per transport attempted, not one row per send.
+  //
+  // `sendEmail` already walks Gmail then Resend and returns the whole chain. Recording only the
+  // winner would put "sent via: resend" on the card with no way to say why the primary path was
+  // not used, and a disclosed fallback that cannot explain itself is not disclosed. Failures are
+  // written first so the successful row is the newest, which is the order `sendsFor` returns.
+  for (const attempt of outcome.attempts) {
+    if (attempt.ok) continue;
+    await q.insertSend({
+      draftId,
+      toAddress: outcome.to ?? "unknown",
+      transport: attempt.transport,
+      status: "failed",
+      error: attempt.error,
+    });
+  }
+
+  if (outcome.ok) {
+    await q.insertSend({
+      draftId,
+      toAddress: outcome.to,
+      transport: outcome.transport,
+      status: "sent",
+      error: null,
+    });
+  } else if (outcome.attempts.length === 0) {
+    // No transport was even attempted — the recipient lock itself refused. That is still a
+    // failed send and still belongs on the card.
+    await q.insertSend({
+      draftId,
+      toAddress: outcome.to ?? "unknown",
+      transport: "none",
+      status: "failed",
+      error: outcome.error,
+    });
+  }
 
   if (!outcome.ok) {
     return NextResponse.json(
