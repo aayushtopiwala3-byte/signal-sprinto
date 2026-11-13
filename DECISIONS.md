@@ -504,3 +504,29 @@ Two details that keep the number honest:
 Editing a draft re-checks through `tierDraft`, not the older verbatim-only validator. Otherwise an
 edit would be a way around the support requirement: a hook downgraded to asserted at run time
 would come back sendable the moment anyone touched the body.
+
+### D-41 · R-22 stops gating on an unknown headcount, because R-02c already said it must not [§2.4]
+§2.4 defines R-02c: when `size_band` is unknown, **do not gate** — carry `size_unknown` forward
+and name it in the counterfactual. That was implemented in the FIT gate, and then undone one rule
+later: R-22 handed off on *any* empty Evidence Map field, `size_band` included. So an unknown
+headcount still decided outcomes; it just did it under a different rule id, as a HOLD instead of
+a DROP. F-2 survived the fix that was meant to close it.
+
+`rocketlane.com` is the case that exposed it. 55 points across 3 independent groups, and after
+R-23 every one of those three signals is `verified` — a trust-centre title, a Series C
+announcement, and a founder interview, each naming Rocketlane. It was held anyway, because four
+guessed careers URLs (`/careers`, `/jobs`, `/about/careers`, `/company/careers`) all return 404.
+Rocketlane publishes no careers page at any address a crawler can guess. That is a fact about
+their site, not a doubt about their evidence.
+
+R-22 now gates on `VERDICT_CRITICAL_FIELDS` — the loop fields minus `size_band`. The other three
+still gate and should: without `is_b2b_saas` we cannot claim R-01 passed, without `cert_status`
+the play is a coin flip between greenfield and migration and the email opens on the wrong angle,
+and `pressure_signals` is what the signals are read from.
+
+Two things deliberately did **not** change. The loop still chases `size_band` — `shouldContinue`
+is untouched, so the agent keeps trying to find it and the trace still shows it looking. And
+`missing_fields` still records it, so the card still says the headcount is unknown. A Send issued
+without one now carries that in `what_would_change_it`: if they turn out to be above 500 they
+have in-house GRC and this becomes a Drop. The gap is disclosed; it is no longer allowed to
+overrule three verified signals.

@@ -54,8 +54,65 @@ describe("T-12 · the loop's stopping rule", () => {
 
     expect(handed.verdict).toBe("HOLD");
     expect(handed.rule_fired).toBe("R-22");
-    expect(handed.verdict_reason).toContain("size_band, cert_status");
+    // Only the gating gap is named. `size_band` was passed in and is deliberately not here:
+    // see the R-02c test below.
+    expect(handed.verdict_reason).toContain("cert_status");
     expect(handed.verdict_reason).toContain("not stated");
+  });
+
+  it("R-02c · does not hand off on an unknown headcount alone", () => {
+    // The rocketlane case. Three verified signals, 55 points, 3 independent groups, and no
+    // readable careers page anywhere we can guess. R-02c says unknown size must not decide the
+    // outcome; R-22 was re-imposing exactly that gate one rule later, so a Send that rested on
+    // verified evidence became a Hold because of a fact nobody publishes.
+    const sendable = {
+      verdict: "SEND" as const,
+      timing_score: 55,
+      independent_signals: 3,
+      play: "greenfield" as const,
+      verdict_reason: "R-20: 55 points across 3 independent signals",
+      rule_fired: "R-20",
+      fired_signals: [],
+      what_would_change_it: null,
+    };
+
+    const handed = applyHandoffRules(sendable, {
+      fitPass: true,
+      missing: ["size_band"],
+      fetchesUsed: MAX_EXTRA_FETCHES,
+      hasNamedContact: true,
+    });
+
+    expect(handed.verdict).toBe("SEND");
+    expect(handed.rule_fired).toBe("R-20");
+    // Not gated, but not silent either — the card has to say the headcount is unknown.
+    expect(handed.what_would_change_it).toContain("size");
+    expect(handed.what_would_change_it).toContain("500");
+  });
+
+  it("R-02c · still hands off when a gating field is missing alongside the headcount", () => {
+    const sendable = {
+      verdict: "SEND" as const,
+      timing_score: 55,
+      independent_signals: 3,
+      play: "greenfield" as const,
+      verdict_reason: "R-20: 55 points across 3 independent signals",
+      rule_fired: "R-20",
+      fired_signals: [],
+      what_would_change_it: null,
+    };
+
+    const handed = applyHandoffRules(sendable, {
+      fitPass: true,
+      missing: ["size_band", "cert_status"],
+      fetchesUsed: MAX_EXTRA_FETCHES,
+      hasNamedContact: true,
+    });
+
+    expect(handed.verdict).toBe("HOLD");
+    expect(handed.rule_fired).toBe("R-22");
+    expect(handed.verdict_reason).toContain("cert_status");
+    expect(handed.verdict_reason).not.toContain("size_band");
   });
 
   it("leaves a fit-gate DROP alone — an evidenced rejection is not made uncertain by a gap", () => {

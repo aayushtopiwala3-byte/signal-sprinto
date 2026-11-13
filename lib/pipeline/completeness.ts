@@ -25,6 +25,33 @@ export function isComplete(evidence: EvidenceMap): boolean {
 }
 
 /**
+ * R-02c (§2.4) — the fields whose absence actually makes a verdict unsound.
+ *
+ * This is deliberately NOT the same set the loop chases. The loop should keep trying to fill
+ * every field; the question here is narrower: which gaps mean we must not decide at all.
+ *
+ * `size_band` is excluded, and that exclusion is the whole point of R-02c. An unknown headcount
+ * cannot drop a company (R-02c) — but R-22 was then re-imposing the same gate one rule later as
+ * a HOLD, so unknown size still decided the outcome and F-2 survived the fix that was supposed
+ * to close it. rocketlane.com is the case that exposed it: 55 points across 3 independent
+ * groups, every signal verified, held because nobody publishes a readable careers page at a URL
+ * we can guess. The gap is real, but it is not a reason to disbelieve three verified signals —
+ * so it is carried as `size_unknown` and named in the counterfactual instead of gating.
+ *
+ * The other three do gate. Without `is_b2b_saas` we cannot say R-01 passed; without
+ * `cert_status` the play is a coin flip between greenfield and migration, and the email would
+ * open on the wrong angle; `pressure_signals` is what the signals are read from.
+ */
+export const VERDICT_CRITICAL_FIELDS: readonly LoopField[] = LOOP_FIELDS.filter(
+  (f) => f !== "size_band",
+);
+
+/** The subset of `emptyFields` that R-22 is allowed to hand off on. */
+export function blockingFields(evidence: EvidenceMap): LoopField[] {
+  return emptyFields(evidence).filter((f) => VERDICT_CRITICAL_FIELDS.includes(f));
+}
+
+/**
  * The loop's stopping decision, in one deterministic place.
  * At the cap the answer is never "try harder" — it is a handoff (§7.3).
  */

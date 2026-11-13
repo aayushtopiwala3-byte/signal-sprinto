@@ -14,7 +14,12 @@ import {
 } from "@/lib/fetch/plan";
 import { inferSize, type SizePage } from "@/lib/size/infer";
 import { extractWithAi, extractWithRules } from "@/lib/pipeline/extract";
-import { MAX_EXTRA_FETCHES, emptyFields, shouldContinue } from "@/lib/pipeline/completeness";
+import {
+  MAX_EXTRA_FETCHES,
+  VERDICT_CRITICAL_FIELDS,
+  emptyFields,
+  shouldContinue,
+} from "@/lib/pipeline/completeness";
 import { chooseNextUrl } from "@/lib/pipeline/loop";
 import { findContacts, peekHunterMeta } from "@/lib/hunter/client";
 import { evaluateFit } from "@/lib/rules/fit";
@@ -93,12 +98,31 @@ export function applyHandoffRules(
 ): VerdictResult {
   if (!ctx.fitPass) return result;
 
-  if (ctx.missing.length > 0 && result.verdict !== "HOLD") {
+  // R-02c (§2.4). R-22 hands off on a gap that makes the verdict unsound, not on every gap.
+  // `size_band` is excluded: unknown headcount may not decide an outcome, and gating here would
+  // be R-02c's rule re-imposed one step later under a different id. The gap is still reported —
+  // `missing_fields` keeps the full list and the counterfactual names it — it just no longer
+  // overrides three verified signals.
+  const blocking = ctx.missing.filter((f) => VERDICT_CRITICAL_FIELDS.includes(f as LoopField));
+
+  if (blocking.length > 0 && result.verdict !== "HOLD") {
     return {
       ...result,
       verdict: "HOLD",
       rule_fired: "R-22",
-      verdict_reason: `R-22: ${ctx.fetchesUsed}/${MAX_EXTRA_FETCHES} fetches used and ${ctx.missing.join(", ")} still ${NOT_STATED} — handing off rather than guessing`,
+      verdict_reason: `R-22: ${ctx.fetchesUsed}/${MAX_EXTRA_FETCHES} fetches used and ${blocking.join(", ")} still ${NOT_STATED} — handing off rather than guessing`,
+    };
+  }
+
+  // Not a gate, but not forgotten either: a Send issued without a headcount says so on the card.
+  if (ctx.missing.includes("size_band") && result.verdict === "SEND") {
+    return {
+      ...result,
+      what_would_change_it:
+        `Company size is still ${NOT_STATED} — no readable careers or about page gave a headcount, ` +
+        `so R-02's >500 check never ran. If they turn out to be above 500 they have in-house GRC ` +
+        `and this becomes a Drop. Everything else here is verified evidence. ` +
+        (result.what_would_change_it ?? ""),
     };
   }
 
