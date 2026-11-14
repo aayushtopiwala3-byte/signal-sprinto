@@ -1,7 +1,11 @@
 /**
- * §4.2 — the 12 seeded entries, in this exact order. The failures are the point: a duplicate
+ * §4.2 — the seeded entries, in this exact order. The failures are the point: a duplicate
  * pair, a messy URL that collapses onto one of them, and a domain that does not resolve.
  * Never silently remove them.
+ *
+ * Broadened to 16 entries in G6 §4. One Send on a board of nine is defensible but thin, so four
+ * more ICP-fitting companies were added — chosen on fit, named in VERIFICATION_LOG.md before
+ * being fetched, and kept whatever they scored.
  */
 export const SAMPLE_DOMAINS: string[] = [
   "rocketlane.com",
@@ -20,6 +24,14 @@ export const SAMPLE_DOMAINS: string[] = [
   "rocketlane.com",
   "sprinto-test-does-not-exist-9x.com",
   "plivo.com",
+  // G6 §4 — four more, chosen for ICP fit and committed to VERIFICATION_LOG.md *before* they
+  // were fetched. Indian B2B SaaS, Series A–C, all handling customer data. Whatever they score
+  // is what they score: swapping one out because the board looked better without it would be
+  // tuning the test to the answer, which is the failure G4 §0 exists to prevent.
+  "zluri.com",
+  "signzy.com",
+  "everstage.com",
+  "hyperverge.co",
 ];
 
 export const SAMPLE_TEXT = SAMPLE_DOMAINS.join("\n");

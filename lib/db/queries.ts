@@ -746,6 +746,28 @@ export async function sendsFor(draftId: string): Promise<SendRow[]> {
   return sql<SendRow>`SELECT * FROM sends WHERE draft_id = ${draftId} ORDER BY sent_at DESC`;
 }
 
+/**
+ * §3 (G6) — sends split by what actually happened to them.
+ *
+ * `dry_run` is counted apart from `sent` and from `send_failed` on purpose. Folding it into
+ * either would be a lie in a different direction: into `sent` it claims a transmission that did
+ * not happen, into `failed` it reports a breakage when nothing broke.
+ */
+export async function sendCounts(): Promise<{ sent: number; failed: number; dryRun: number }> {
+  const rows = await sql<{ transport: string; status: string; n: string | number }>`
+    SELECT transport, status, COUNT(*) AS n FROM sends GROUP BY transport, status`;
+  let sent = 0;
+  let failed = 0;
+  let dryRun = 0;
+  for (const r of rows) {
+    const n = Number(r.n);
+    if (r.transport === "dry_run") dryRun += n;
+    else if (r.status === "sent") sent += n;
+    else failed += n;
+  }
+  return { sent, failed, dryRun };
+}
+
 export async function sendsForRun(runId: string): Promise<(SendRow & { company_id: string })[]> {
   return sql<SendRow & { company_id: string }>`
     SELECT s.*, d.company_id FROM sends s

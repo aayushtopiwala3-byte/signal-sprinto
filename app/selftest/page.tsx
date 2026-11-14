@@ -1,6 +1,7 @@
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { GOLDEN_SET, runGoldenSet } from "@/lib/seed/goldenSet";
 import { BEHAVIOURAL_SET } from "@/lib/seed/behavioural";
+import { FabricationDrill } from "@/components/FabricationDrill";
 import { resolveModelId } from "@/lib/ai/model";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,8 @@ export default async function SelfTestPage() {
         </span>
         <span className="font-mono text-xs text-ink-400">model: {resolveModelId()}</span>
       </div>
+
+      <FabricationDrill />
 
       <Section
         title="Structural — frozen inputs, no network, no model, no database"

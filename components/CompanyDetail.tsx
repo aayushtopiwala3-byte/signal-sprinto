@@ -763,9 +763,11 @@ function DraftSection({
   // §4.2 — the transport that actually carried the email, read back from the send row rather
   // than from the in-session note, so it survives a reload. A fallback must never be mistaken
   // for the primary path, which means the card has to say which one ran even days later.
+  const [dryRun, setDryRun] = useState<{ to: string; from: string; rfc822: string } | null>(null);
   const sent = sends.find((s) => s.status === "sent") ?? null;
   const alreadySent = sent !== null;
-  const failedSends = sends.filter((s) => s.status !== "sent");
+  const failedSends = sends.filter((s) => s.status !== "sent" && s.transport !== "dry_run");
+  const dryRunRow = sends.find((s) => s.transport === "dry_run") ?? null;
 
   if (!draft) {
     return (
@@ -828,10 +830,20 @@ function DraftSection({
       transport?: string;
       error?: string;
       blocked_reason?: string;
+      dry_run?: boolean;
+      from?: string;
+      rfc822?: string;
     };
     setBusy(false);
     if (!res.ok || !data.ok) {
-      setError(data.blocked_reason ?? data.error ?? "Send failed.");
+      setError(data.blocked_reason ?? data.error ?? "The message was not transmitted.");
+      return;
+    }
+    // §3 (G6). A dry run is not a send and is never described as one, in any tense.
+    if (data.dry_run) {
+      setDryRun({ to: data.to ?? "", from: data.from ?? "", rfc822: data.rfc822 ?? "" });
+      setNote(null);
+      router.refresh();
       return;
     }
     setNote(`Sent to ${data.to} via ${data.transport}.`);
@@ -896,6 +908,40 @@ function DraftSection({
 
         {error ? <p className="text-xs text-drop">{error}</p> : null}
         {note ? <p className="text-xs text-send">{note}</p> : null}
+
+        {/* §3 (G6) — the dry run. The word "sent" does not appear here in any tense: the
+            message was not transmitted, and the only honest thing to show is the exact bytes
+            that would have been, so a judge can read the real message rather than a claim
+            about it. */}
+        {dryRun || dryRunRow ? (
+          <div className="rounded-md border border-dashed border-hold/50 bg-hold/5 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="hold">dry run</Badge>
+              <span className="text-[11px] font-semibold text-hold">
+                Not sent — no mail transport is configured.
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-ink-300">
+              This is the exact message that would have been transmitted. Add the Gmail or Resend
+              credentials and this same draft goes out unchanged — no code change, no re-draft.
+            </p>
+            {dryRun ? (
+              <>
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+                  RFC&nbsp;822 bytes — what the Gmail path would base64url-encode
+                </p>
+                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded border border-ink-700 bg-ink-900 p-2 font-mono text-[10px] leading-snug text-ink-200">
+                  {dryRun.rfc822}
+                </pre>
+              </>
+            ) : (
+              <p className="mt-1 text-[11px] leading-snug text-ink-400">
+                Press <span className="font-semibold">Approve and send</span> again to re-render
+                the message bytes.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         {/* §4.2 — the transport is part of the record, not a detail of the moment it was sent.
             Gmail is the primary path; Resend only ever runs because Gmail did not, so when it

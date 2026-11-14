@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/mail/send";
+import { buildDryRun, dryRunAvailable } from "@/lib/mail/dryRun";
 import * as q from "@/lib/db/queries";
 
 export const runtime = "nodejs";
@@ -36,6 +37,38 @@ export async function POST(request: Request) {
       },
       { status: 409 },
     );
+  }
+
+  // §3 (G6). Checked BEFORE the transport chain, never inside it, so a Gmail or Resend failure
+  // can never silently downgrade into a dry run. With credentials present this branch is
+  // unreachable — `dryRunAvailable()` is false — and `tests/dryRun.test.ts` asserts that.
+  if (dryRunAvailable()) {
+    let dry;
+    try {
+      dry = buildDryRun({ subject: draft.subject, body: draft.body });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : String(err) },
+        { status: 500 },
+      );
+    }
+
+    await q.insertSend({
+      draftId,
+      toAddress: dry.to,
+      transport: "dry_run",
+      status: "not_sent",
+      error: "No mail transport is configured (no Gmail OAuth values and no Resend key).",
+    });
+
+    return NextResponse.json({
+      ok: true,
+      dry_run: true,
+      transport: "dry_run",
+      to: dry.to,
+      from: dry.from,
+      rfc822: dry.rfc822,
+    });
   }
 
   const outcome = await sendEmail({ subject: draft.subject, body: draft.body });

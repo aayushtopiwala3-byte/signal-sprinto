@@ -32,12 +32,13 @@ const KIND_LABEL: Record<string, string> = {
 /** §9's health page: model id, Hunter quota, cost in ₹ and USD, cache-hit rate, staleness. */
 export default async function HealthPage() {
   const run = await q.latestRun();
-  const [quota, cost, ledger, pages, blocks, outcomes] = await Promise.all([
+  const [quota, cost, ledger, pages, blocks, sendTally, outcomes] = await Promise.all([
     fetchQuota(),
     run ? q.costSummary(run.id) : Promise.resolve(null),
     run ? q.costLedger(run.id) : Promise.resolve([]),
     run ? q.cacheCounts(run.id) : Promise.resolve({ cached: 0, live: 0 }),
     run ? q.evidenceBlocks(run.id) : Promise.resolve([]),
+    q.sendCounts(),
     run
       ? q.runOutcomeCounts(run.id)
       : Promise.resolve({ scored: 0, send: 0, hold: 0, drop: 0, quarantined: 0, elapsedMs: null }),
@@ -90,6 +91,41 @@ export default async function HealthPage() {
           elapsedMs: outcomes.elapsedMs,
         }}
       />
+
+      <Card>
+        <CardHeader className="flex items-center gap-2">
+          <CardTitle>Send transport</CardTitle>
+          <Badge tone={sendTally.sent > 0 ? "send" : sendTally.dryRun > 0 ? "hold" : "neutral"}>
+            {sendTally.sent > 0 ? "live" : sendTally.dryRun > 0 ? "dry run only" : "nothing yet"}
+          </Badge>
+        </CardHeader>
+        <CardBody className="space-y-1.5 text-xs">
+          {/* §3 (G6). Three counters, never two. Folding dry runs into `sent` would claim a
+              transmission that did not happen; folding them into `failed` would report a
+              breakage when nothing broke. */}
+          <Row label="Sent" value={String(sendTally.sent)} mono />
+          <Row label="Dry-run (not transmitted)" value={String(sendTally.dryRun)} mono />
+          <Row label="Send failed" value={String(sendTally.failed)} mono />
+          <Row
+            label="Transport chain"
+            value={
+              capability.gmail()
+                ? "Gmail → Resend → fail loudly"
+                : capability.resend()
+                  ? "Resend only (no Gmail OAuth) → fail loudly"
+                  : "none configured — dry run"
+            }
+          />
+          {!capability.gmail() && !capability.resend() ? (
+            <p className="pt-1 text-[11px] leading-snug text-ink-400">
+              With no credentials configured, Approve and send writes a{" "}
+              <span className="font-mono">dry_run</span> row and renders the exact RFC-822 bytes
+              the Gmail path would encode. Nothing leaves the building, and the card does not
+              claim it did. Adding the credentials makes the same draft transmit unchanged.
+            </p>
+          ) : null}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader className="flex items-center gap-2">
