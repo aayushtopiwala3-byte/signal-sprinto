@@ -474,6 +474,16 @@ function TierLegend() {
   );
 }
 
+/** G6 §6.2 — one label/value row in the phone-width loop trace. */
+function Stacked({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{label}</dt>
+      <dd className="mt-0.5">{children}</dd>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------ 3. Loop trace */
 
 function LoopTraceSection({
@@ -504,7 +514,11 @@ function LoopTraceSection({
           to skip.
         </p>
 
-        <div className="overflow-x-auto">
+        {/* G6 §6.2 — the trace is a table on sm+ and stacked cards below it. Six columns, one
+            of them long prose, cannot be read at 375px: leaving it in a horizontally scrolling
+            container means a judge on a phone has to drag sideways to reach "why", which is the
+            column that carries the argument. The stacked version below is the same data. */}
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[640px] text-left text-xs">
             <thead className="text-[10px] uppercase tracking-wide text-ink-400">
               <tr className="border-b border-ink-700">
@@ -567,6 +581,66 @@ function LoopTraceSection({
             </tbody>
           </table>
         </div>
+
+        <ol className="space-y-2 sm:hidden">
+          {trace.map((t) => {
+            const empty = JSON.parse(t.empty_fields_json) as string[];
+            const filled = t.fields_filled_json
+              ? (JSON.parse(t.fields_filled_json) as string[])
+              : [];
+            return (
+              <li key={t.id} className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">step {t.iteration}</Badge>
+                  <Badge
+                    tone={
+                      t.chosen_by === "ai"
+                        ? "accent"
+                        : t.chosen_by === "reserved"
+                          ? "send"
+                          : "neutral"
+                    }
+                  >
+                    {t.chosen_by === "reserved" ? "RESERVED" : t.chosen_by}
+                  </Badge>
+                </div>
+                <dl className="mt-1.5 space-y-1 text-[11px] leading-snug">
+                  <Stacked label="Still empty">
+                    <span className="font-mono text-hold">
+                      {empty.length ? fieldsAsNouns(empty) : "nothing"}
+                    </span>
+                  </Stacked>
+                  <Stacked label="Chose">
+                    {t.chosen_url ? (
+                      <a
+                        href={t.chosen_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-accent-soft hover:underline"
+                      >
+                        {t.chosen_url}
+                      </a>
+                    ) : (
+                      <span className="text-ink-400">stopped</span>
+                    )}
+                  </Stacked>
+                  <Stacked label="Why">
+                    <span className="text-ink-300">{t.chosen_reason ?? <NotStated />}</span>
+                  </Stacked>
+                  <Stacked label="Filled">
+                    <span className="font-mono text-send">
+                      {filled.length
+                        ? fieldsAsNouns(filled)
+                        : t.fetch_ok === false
+                          ? "fetch failed"
+                          : "nothing"}
+                    </span>
+                  </Stacked>
+                </dl>
+              </li>
+            );
+          })}
+        </ol>
 
         <details className="text-xs">
           <summary className="cursor-pointer text-ink-400 hover:text-ink-100">

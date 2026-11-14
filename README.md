@@ -42,87 +42,93 @@ Every page footer names the resolved model id, so the AI claim is checkable from
 flowchart TB
   subgraph GL["🧑 Growth Lead — two checkpoints, both hers"]
     direction TB
-    GL1["Pastes domains<br/>Starts the run"]
-    GL2["Moves S-01…S-07 weights<br/>Flips the switches"]
-    GL3["Reads verdict + evidence<br/>Swaps contact · edits draft"]
-    GL4["Accepts or rejects<br/>with a written reason"]
-    GL5["✋ CHECKPOINT 1<br/>Approve and send"]
-    GL6["✋ CHECKPOINT 2<br/>Pastes a reply<br/>Confirms what it does"]
+    GL1["Pastes domains, starts the run<br/><code>components/Board.tsx</code>"]
+    GL2["Moves S-01…S-07 weights, flips switches<br/><code>components/Board.tsx</code>"]
+    GL3["Reads verdict + evidence, swaps contact<br/><code>components/CompanyDetail.tsx</code>"]
+    GL5["✋ CHECKPOINT 1 · Approve and send<br/><code>app/api/send/route.ts</code>"]
+    GL6["✋ CHECKPOINT 2 · Pastes a reply, confirms<br/><code>components/Replies.tsx</code>"]
   end
 
-  subgraph SYS["⚙️ System — deterministic TypeScript"]
+  subgraph SYS["⚙️ System — deterministic TypeScript, one company per request"]
     direction TB
-    S1["① normalizeDomain<br/>dedupe to one company"]
-    S2["② robots.txt gate + block gate<br/>disallow or R-54 ⇒ quarantine, 0 fetches"]
-    S3["③ fetch tiers<br/>plain GET → r.jina.ai → stop<br/>page_cache · 800ms politeness"]
-    S4["④ extract → Evidence Map"]
-    S5{"⑤ shouldContinue?<br/>fields empty AND<br/>fetches_used &lt; 4"}
-    S6["⑥ pick next page<br/>persist loop_trace row"]
-    S7["⑦ rules engine<br/>FIT R-01…R-04 · signals S-01…S-07<br/>verdict R-20 / R-21 / R-22"]
-    S8["⑧ R-30 PoC ladder<br/>by headcount band"]
-    S9["⑨ pain points"]
-    S10["⑩ R-40 subject check<br/>+ hook must be VERIFIED"]
-    S11["lib/size/infer.ts<br/>headcount from open roles<br/>R-02a / R-02b / R-02c"]
-    S12["counterfactualFor<br/>the next action per card"]
+    S1["① normalise + dedupe<br/><code>lib/fetch/normalizeDomain.ts</code>"]
+    S2["② robots gate + block gate<br/><code>lib/fetch/robots.ts</code> · <code>app/api/run/start/route.ts</code>"]
+    S3["③ fetch tiers + page cache + politeness<br/><code>lib/fetch/tiers.ts</code> · <code>lib/fetch/clean.ts</code>"]
+    S4["④ Evidence Map<br/><code>lib/pipeline/extract.ts</code>"]
+    S5{"⑤ shouldContinue?<br/><code>lib/pipeline/completeness.ts</code>"}
+    S6["⑥ choose next page, persist trace<br/><code>lib/pipeline/loop.ts</code>"]
+    S7["⑦ FIT + signals + verdict<br/><code>lib/rules/fit.ts</code> · <code>signals.ts</code> · <code>verdict.ts</code>"]
+    S8["⑧ R-30 contact ladder<br/><code>lib/rules/poc.ts</code>"]
+    S9["⑨ pain points<br/><code>lib/ai/prompts/painPoints.ts</code>"]
+    S10["⑩ R-40 subject + hook must be VERIFIED<br/><code>lib/rules/subject.ts</code> · <code>evidenceTier.ts</code>"]
+    S11["headcount from open roles<br/><code>lib/size/infer.ts</code>"]
+    S12["what would move this<br/><code>lib/rules/counterfactual.ts</code>"]
+    S13["orchestrator<br/><code>lib/pipeline/runCompany.ts</code>"]
   end
 
-  subgraph RES["🔒 Reserved fetches — 2 of the 4, never the model's to skip"]
+  subgraph RES["🔒 Reserved fetches — 2 of 4, not the model's to skip · <code>lib/fetch/plan.ts</code>"]
     direction TB
     R1["slot 1 · security / trust page<br/>carries S-01, S-02, S-03"]
     R2["slot 2 · careers page<br/>headcount + first compliance hire"]
   end
 
-  subgraph TIER["🛡️ R-23 evidence tiering — the gate before scoring"]
+  subgraph TIER["🛡️ R-23 gate before scoring · <code>lib/rules/evidenceTier.ts</code>"]
     direction TB
     T1{"verbatim on a page we fetched?"}
-    T2{"mentions THIS company?<br/>name · domain stem · first person on own host"}
-    T3{"contains a trigger for THIS signal?"}
+    T2{"mentions THIS company?"}
+    T3{"trigger term for THIS signal?"}
     T4["✅ VERIFIED — scores"]
-    T5["⚠️ ASSERTED — scores 0<br/>shown greyed, with the reason"]
-    T6["⛔ FABRICATED — never evidence<br/>counted on /health"]
+    T5["⚠️ ASSERTED — scores 0, shown greyed"]
+    T6["⛔ FABRICATED — never evidence<br/>drill: <code>lib/seed/fabricationDrill.ts</code>"]
   end
 
-  subgraph REPLY["📨 Reply-intent loop — R-50…R-55"]
+  subgraph REPLY["📨 Reply loop R-50…R-55 · <code>lib/rules/replyIntent.ts</code>"]
     direction TB
-    P1["quote guard<br/>not verbatim in the reply ⇒ unclear"]
+    P1["quote guard — not verbatim ⇒ unclear"]
     P2["R-50 won · R-51 snooze 90d<br/>R-52 re-ladder · R-53 suppress 180d"]
-    P3["R-54 permanent block<br/>typed confirmation, no undo"]
+    P3["R-54 permanent block, typed phrase, no undo"]
     P4["R-55 unclear — no automatic action"]
   end
 
-  subgraph HUN["🔎 Hunter.io"]
-    H1["Domain Search<br/>named people only"]
+  subgraph HUN["🔎 Hunter.io · <code>lib/hunter/client.ts</code>"]
+    H1["Domain Search, named people only"]
   end
 
-  subgraph GEM["✨ Gemini Flash · gemini-3.8-flash — reads and writes, never decides"]
+  subgraph GEM["✨ Gemini Flash · reads and writes, never decides"]
     direction TB
-    A1["AI-1 read fields out of prose<br/>+ the quote that proves each"]
-    A2["AI-2 suggest the next URL"]
-    A3["AI-3 name 2 pain points"]
-    A4["AI-4 write subject + body"]
-    A5["AI-5 classify a reply"]
+    A1["AI-1 extract · <code>lib/ai/prompts/extract.ts</code>"]
+    A2["AI-2 next URL · <code>lib/ai/prompts/nextPage.ts</code>"]
+    A3["AI-3 pain points · <code>lib/ai/prompts/painPoints.ts</code>"]
+    A4["AI-4 draft · <code>lib/ai/prompts/draft.ts</code>"]
+    A5["AI-5 reply intent · <code>lib/ai/prompts/replyIntent.ts</code>"]
   end
 
-  subgraph SEND["📧 Transport — disclosed on the card"]
-    G1["Gmail users.messages.send<br/>to: GMAIL_SEND_TO 🔒"]
-    G2["Resend fallback<br/>card names which one sent"]
+  subgraph SEND["📧 Transport — disclosed on the card · <code>lib/mail/send.ts</code>"]
+    direction TB
+    G1["Gmail · <code>lib/mail/gmail.ts</code>"]
+    G2["Resend fallback · <code>lib/mail/resend.ts</code>"]
+    G3["dry_run — outside the chain, never a send<br/><code>lib/mail/dryRun.ts</code>"]
+  end
+
+  subgraph TEST["🧪 Self-test · <code>app/selftest/page.tsx</code>"]
+    direction TB
+    V1["17 structural · <code>lib/seed/goldenSet.ts</code>"]
+    V2["9 behavioural, reads the live DB<br/><code>lib/seed/behavioural.ts</code>"]
   end
 
   GL1 --> S1 --> S2 --> S3 --> S4
-  S4 -.->|"text + empty fields"| A1
+  S13 -.->|"drives ①–⑩"| S3
+  S4 -.-> A1
   A1 -.->|"value + verbatim quote"| S4
   S4 --> S5
 
-  S2 --> R1
-  R1 --> R2
-  R2 -->|"the other 2 slots"| S5
-
-  S3 --> S11
-  S11 -->|"size_band + provenance"| S4
+  S2 --> R1 --> R2
+  R2 -->|"remaining 2 slots"| S5
+  S3 --> S11 --> S4
 
   S5 -->|"yes — the one discretionary path"| S6
-  S6 -.->|"candidate links"| A2
-  A2 -.->|"suggested URL"| S6
+  S6 -.-> A2
+  A2 -.-> S6
   S6 -->|"loop back, budget −1"| S3
   S5 -->|"no — complete, or 4/4 spent"| T1
 
@@ -135,34 +141,34 @@ flowchart TB
   T4 -->|"only verified reaches the score"| S7
   T5 -.->|"0 points, excluded from R-21"| S7
 
-  S7 --> S12
+  S7 --> S12 --> GL3
   S7 --> S8
   S8 -->|"FIT passed only"| H1
-  H1 -->|"candidates"| S8
-  S8 --> S9
-  S9 -.-> A3
+  H1 --> S8
+  S8 --> S9 -.-> A3
   A3 -.-> S9
-  S9 --> S10
-  S10 -.-> A4
+  S9 --> S10 -.-> A4
   A4 -.->|"draft"| S10
 
   S7 --> GL3
-  S12 --> GL3
   S10 --> GL3
   GL2 -->|"re-score stored evidence<br/>no fetch, no AI call"| S7
-  GL3 --> GL4
   GL3 --> GL5
   GL5 -->|"draftId only — no recipient"| G1
   G1 -.->|"on failure"| G2
+  GL5 -->|"no credentials configured"| G3
 
   G1 --> GL6
-  GL6 -.->|"pasted reply"| A5
+  GL6 -.-> A5
   A5 -.->|"intent + quote"| P1
   P1 --> P2
   P1 --> P3
   P1 --> P4
   P2 -->|"suppression state"| S2
   P3 -->|"permanent block"| S2
+  P2 -->|"R-52 re-ladders"| S8
+
+  S7 -->|"the live board is what T-20 asserts"| V2
 ```
 
 Solid arrows are control flow. Dotted arrows are the only five places a model is consulted —

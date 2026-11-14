@@ -294,3 +294,77 @@ The gate sits in `/api/run/start` **before** `insertCompany`, so the domain is n
 therefore never fetched. A blocked domain that got queued and then fetched would have been
 contacted in every sense that matters.
 
+---
+
+## §3 · Part B — the send path is provable before the credentials exist — **PASS**
+
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `RESEND_API_KEY` and
+`EMAIL_FROM` are not set, so `sends` had 0 rows and step 7 of the brief was unproven. Closed with
+a third transport, `dry_run`, which **does not transmit and never says it did**.
+
+Observed by pressing **Approve and send** on the live `rocketlane.com` Send card:
+
+```
+DRY RUN
+Not sent — no mail transport is configured.
+
+This is the exact message that would have been transmitted. Add the Gmail or Resend
+credentials and this same draft goes out unchanged — no code change, no re-draft.
+
+RFC 822 BYTES — WHAT THE GMAIL PATH WOULD BASE64URL-ENCODE
+
+To: demo@example.com\r\n
+From: the Growth Lead at Sprinto <me — the authorised Gmail mailbox, substituted by the API
+      at send time>\r\n
+Subject: Compliance automation for your engineering team\r\n
+MIME-Version: 1.0\r\n
+Content-Type: text/plain; charset="UTF-8"\r\n
+Content-Transfer-Encoding: 8bit\r\n
+\r\n
+According to your press announcements, Rocketlane raises $60 Million in Series C to Redefine
+Professional Services for the AI Era. ...
+```
+
+Those are the real bytes, CRLF-terminated, not a summary of them. The `From:` does not invent an
+address we do not have — Gmail substitutes the authorised mailbox for the literal `me`, so that
+is what is shown.
+
+The row it wrote:
+
+```
+transport=dry_run | status=not_sent | to=demo@example.com
+error="No mail transport is configured (no Gmail OAuth values and no Resend key)."
+```
+
+And `/health`, counting three ways rather than two:
+
+```
+Send transport                    [DRY RUN ONLY]
+Sent                        0
+Dry-run (not transmitted)   1
+Send failed                 0
+Transport chain             none configured — dry run
+```
+
+The four rules §3 sets, and how each is held:
+
+| Rule | How |
+|---|---|
+| `dry_run` impossible when credentials are present | `dryRunAvailable()` is false if Gmail **or** Resend is configured. `tests/dryRun.test.ts` asserts all four combinations, including that a partial Gmail config (2 of 3 values) does **not** count as configured. |
+| The word "sent" never appears in any tense | The only occurrence on the card is *"Not sent"*. A test asserts the outcome object carries no `sent`/`sending`/`sends` token. |
+| Health reports `dry-run` separately | Three counters above, from `sendCounts()`. Folding it into `sent` would claim a transmission; into `failed` would report a breakage when nothing broke. |
+| The chain order is unchanged | `sendEmail` still walks Gmail → Resend → fail loudly. The dry run is checked **before** that chain is entered, never inside it, so a transport failure cannot silently downgrade into "here are the bytes". |
+
+**The one-line check that no code change is needed when the credentials land:**
+
+```ts
+it("the first real send needs no code change — credentials alone flip the selector", () => {
+  expect(dryRunAvailable()).toBe(true);
+  process.env.GOOGLE_CLIENT_ID = "id";
+  process.env.GOOGLE_CLIENT_SECRET = "secret";
+  process.env.GOOGLE_REFRESH_TOKEN = "token";
+  expect(dryRunAvailable()).toBe(false);
+  expect(capability.gmail()).toBe(true);
+});
+```
+

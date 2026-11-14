@@ -14,7 +14,10 @@ const NAV = [
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-950/90 backdrop-blur">
-      <div className="mx-auto flex max-w-[1500px] items-center gap-4 px-4 py-2.5">
+      {/* G6 §6.2 — wraps at phone width. Adding the Replies tab pushed the nav 37–48px past
+          375px, which is a horizontal page scroll on every screen. `flex-wrap` plus a smaller
+          gutter gap keeps all five tabs reachable without one. */}
+      <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
         <Link href="/" className="flex items-center gap-2">
           <span className="grid h-6 w-6 place-items-center rounded bg-accent text-[11px] font-bold text-white">
             S
@@ -24,7 +27,7 @@ export function SiteHeader() {
         <span className="hidden text-[11px] text-ink-400 sm:inline">
           outbound qualification &amp; drafting
         </span>
-        <nav className="ml-auto flex items-center gap-0.5">
+        <nav className="ml-auto flex flex-wrap items-center gap-0.5">
           {NAV.map((n) => (
             <Link
               key={n.href}
