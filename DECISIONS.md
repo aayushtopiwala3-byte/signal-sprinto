@@ -711,3 +711,77 @@ failure F-12 described and the old suite could not see.
 
 **`skipped` is counted separately from `passed`.** A behavioural case with no run to read reports
 exactly that. The whole value of this page is that green means something.
+
+### D-50 · Three paths were "built" and had never run. Executing them found three defects [G6 §2]
+R-52, R-54 and the `FABRICATED` tier all had unit coverage and none had executed end to end.
+Running them found three real bugs that reading the code had not.
+
+**The contact ladder promoted a Software Engineer over a Founder.** On a company whose
+`size_band` is unknown, the null band uses the 51–200 ladder, on which neither title appears —
+so both candidates landed off-ladder at rank 99, tied on confidence, and the tiebreak fell
+through to *alphabetical email order*. Hunter already returns a `seniority` field and the ranker
+was ignoring it. Seniority now breaks a ladder tie before confidence does, which is consistent
+with the design rather than new: confidence is deliverability, not relevance, and the ladder
+already prefers a named person at confidence 40 over `info@` at 95.
+
+**The superseded contact kept the ladder's reason, not the human's.** After R-52 the previous
+primary still said "ladder rank 99 vs 2" — nothing about a person having told us we had the
+wrong one. `supersedeContact` now writes the reply as the cause. The audit trail for R-52 *is*
+the reason the contact changed; without it the promotion is unexplained.
+
+**Pulling the database was a blank screen.** G4 F8 requires an error banner. There was no error
+boundary at all, so an unreachable `DATABASE_URL` rendered HTTP 500 with an empty body and the
+cause only in the server log. `app/error.tsx` and `app/global-error.tsx` now name the likely
+cause and state that nothing was half-written — which is the question someone actually has when
+a pipeline dies mid-run.
+
+A fourth finding was not a code defect: my own `wrong_person` test reply ended *"Please don't
+send this to me again"*, and AI-5 classified it `unsubscribe` at 0.90 with that sentence quoted.
+The model was right — that is an unsubscribe request — and it erred toward the conservative
+reading the prompt asks for. The fixture was wrong, not the classifier.
+
+### D-51 · The fabrication drill is a labelled fixture, and it does not touch the counter [G6 §2 A.1]
+`0 fabrications blocked` is honest: every bad quote found on a real run has been genuine text
+that failed the *support* test. But an unfired branch is an unproven one, and "we have a check
+for that" is exactly the claim this build refuses to accept from anyone else.
+
+The drill runs the shipped tiering functions over a stored fixture on `fabrication-demo.invalid`
+— a domain reserved by RFC 2606 that can never resolve. The stubbed quote is deliberately
+plausible rather than garbled, because that is the shape a hallucination actually takes: a
+sentence the page could have contained and did not.
+
+It writes nothing. The Health counter keeps reporting what the real run found, and the screen
+says *"This is a stored fixture, not a live company"* in those words. Padding the counter with a
+fixture would turn the single best artifact in the build into a lie.
+
+### D-52 · `dry_run` closes an unproven step without claiming a send [G6 §3]
+Until the Gmail and Resend credentials exist, `sends` has no rows and step 7 of the brief is
+unproven. The dishonest fix is a fake success row. The honest one is to show the exact bytes
+that *would* go out and say plainly that they did not.
+
+Three properties keep it from being a fudge. It is **unreachable when credentials exist** —
+`dryRunAvailable()` is false the moment Gmail or Resend is configured, including the partial case
+where two of Gmail's three values are set. It sits **outside the transport chain**, checked
+before Gmail → Resend is entered rather than as a fallback inside it, so a transport failure can
+never silently downgrade into "well, here are the bytes". And it **never calls itself a send**
+in any tense; `/health` counts dry-run separately from sent and from failed, because folding it
+into either would be a lie in a different direction.
+
+The `From:` header shows `me — the authorised Gmail mailbox, substituted by the API at send
+time` rather than inventing an address, because a plausible fabricated address is exactly what
+this build exists to refuse.
+
+### D-53 · G4's D3 row contradicts its own A4 row, and A4 is the one to keep [G6 §5]
+`G4 §5 D3` says dragging the funding weight 10 → 45 moves A4 to Send. It cannot, at any weight:
+R-20 requires both ≥ 50 points **and** ≥ 2 independent groups, and a funding-only company has
+exactly one group however the slider is set. At the maximum of 50 the score bar clears and R-21
+holds it.
+
+So the two rows disagree, and A4 is correct — its own note says *"If A4 ever returns SEND, the
+weights are wrong and the build has quietly become the thing I said I wouldn't build."* Making
+D3 pass would mean letting a press mention qualify a company.
+
+What D3 was reaching for is still demonstrable and was demonstrated: the slider moves the score
+(10 → 45) and re-ranks the board with zero fetches and zero model calls — `atlan.com` moved from
+sixth to second. Customisation is real; it just cannot manufacture independence, because
+independence is a different test from weight.

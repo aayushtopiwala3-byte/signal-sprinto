@@ -516,3 +516,104 @@ browser, so the row passes; a judge using `curl` would not see it. The server di
 instead of a stack trace, because a hex digest is the only server detail Next exposes to the
 client and a stack trace is not something an error page should print.
 
+---
+
+## §4 · Part C — what the four new domains actually scored
+
+Recorded unchanged. None of the four produced a Send; all four stay in the set, which is the
+rule §4 sets and the reason the reasons were committed to git before the fetch.
+
+| Domain | Verdict | Score | Groups | Rule | What happened |
+|---|---|---|---|---|---|
+| `zluri.com` | **HOLD** | 30 | 1 | R-20 | S-02 **verified**: *"Zluri is designed with security at its core."* One independent group, so 20 points short of a Send. The strongest of the four. |
+| `signzy.com` | **DROP** | 0 | 0 | R-23 | S-07 fired and was downgraded: *"Check business credibility with deep risk analysis…"* — real product copy that names no company. |
+| `hyperverge.co` | **DROP** | 0 | 0 | R-23 | S-02 and S-07 both downgraded. *"KYC for Security & Brokerage…"* is a page title, not a statement about HyperVerge. |
+| `everstage.com` | **HOLD → blocked** | 10 | 1 | R-04 | Already certified → migration play. Then used as the R-54 target (§2 A.2) and is now permanently blocked, so it appears in quarantine rather than on the board. |
+
+**The honest reading:** two of the four fire a signal that R-23 then refuses, which is the same
+pattern the original set showed. Marketing copy on an Indian SaaS homepage very often states a
+capability without naming the company — *"KYC for Security & Brokerage"* — and R-23 is strict
+about exactly that. `signzy.com` is the sharpest case: it is a KYC provider selling to
+RBI-regulated banks, so S-07 is almost certainly *true* of it, and the quote still does not
+support the claim. The rule costs a true positive there, and that is the trade R-23 was chosen
+for: a verdict built on a sentence that does not mention the company is a verdict that cannot be
+defended in a viva.
+
+`zluri.com` is the counter-example that shows the check is not simply too tight: *"Zluri is
+designed with security at its core"* names the company, speaks to the signal, and scores.
+
+---
+
+## §7 · Part F — freeze
+
+### §7.1 · One clean run in the history — **PASS**
+
+An earlier run was polluted: a regex in my own throwaway runner matched the `SAMPLE_NOTES`
+array as well as `SAMPLE_DOMAINS`, so six prose strings were submitted as domains and quarantined
+as `invalid_domain`. The real 14 domains were unaffected and their verdicts were valid, but the
+quarantine page was noisy.
+
+Fixed in the runner (it now slices only the `SAMPLE_DOMAINS` array) and a clean run was executed.
+Every page reads `latestRun()`, so the clean run **is** what a judge sees; nothing was deleted.
+Final quarantine is exactly two rows, both meaningful:
+
+```
+everstage.com                       [unsubscribed]  R-54: they asked not to be contacted
+                                                    again. This block is permanent.
+sprinto-test-does-not-exist-9x.com  [unreachable]   could not be reached: fetch failed.
+                                                    No pages were fetched.
+```
+
+The reply history on `/replies` deliberately **keeps** the verification drills. They are real
+applied actions against real companies, and hiding them would mean the "what changed" panel
+lied about what changed.
+
+### §7.2 · Components Map regenerated from the final code — **PASS**
+
+Every box names a real file. Checked mechanically, not by eye:
+
+```
+subgraph/end: 9 9 balanced
+undeclared edge endpoints: none
+files named: 38 | missing: none        ← every <code>path</code> exists on disk
+MERMAID_OK nodes=41 viewBox=-8 -8 5578 3749
+```
+
+One dangling edge (`V1 --> TEST`, pointing at a subgraph rather than a node) was found by that
+check and fixed. The map now shows the two reserved fetches as distinct from the discretionary
+loop, R-23 as a three-question gate with the `asserted` path arriving at zero points, the reply
+loop as a second human checkpoint, and `dry_run` sitting outside the transport chain.
+
+### §7.5 · No key was ever committed — **PASS**
+
+```
+$ git check-ignore -v .env.local
+.gitignore:13:.env*     .env.local
+
+$ git log --all -p -- .env.local
+(empty — the path has never been committed on any branch)
+```
+
+Checking the path is not enough, because a key can be committed in some *other* file. So all
+history was also searched for the literal values:
+
+```
+$ git log --all -p -S"npg_oPqFTLN7bIQ8"                 → 0 commits   (Neon password)
+$ git log --all -p -S"AQ.Ab8RN6I"                       → 0 commits   (Gemini key)
+$ git log --all -p -S"1cf7b5320ce635a13708dc177209f2db8b4d81a1" → 0 commits  (Hunter key)
+
+$ git grep -lI -E "npg_oPqFTLN7|AQ\.Ab8RN6I|1cf7b5320ce6"
+(no tracked file contains a live key)
+```
+
+### §7.4 · Clean from a cold `.next` — **PASS**
+
+```
+$ rm -rf .next && npm run build     ✓ Compiled successfully
+$ npx tsc --noEmit                  clean
+$ npx vitest run                    Test Files 20 passed | Tests 234 passed
+$ git status --short                (empty)
+```
+
+### §7.6 · `.next-stale-*` deleted — **PASS** (done in §1)
+
