@@ -617,3 +617,114 @@ $ git status --short                (empty)
 
 ### §7.6 · `.next-stale-*` deleted — **PASS** (done in §1)
 
+### §6.1 · Cold start, timed — **FAIL → fixed**
+
+The instruction was explicit that this is where a missing loading state gets found. It was.
+
+```
+$ curl -o /dev/null -w "ttfb=%{time_starttransfer}s" -H "Cache-Control: no-cache" \
+       "https://signal-sprinto.vercel.app/?cb=$RANDOM"
+
+  attempt 1 (cold):  ttfb=13.549s  total=13.838s  HTTP 200
+  attempt 2 (warm):  ttfb= 1.823s  total= 2.039s  HTTP 200
+```
+
+**13.5 seconds of blank white page.** A serverless cold start, a fresh Neon connection and the
+idempotent schema pass all complete before the first server component can resolve, and every
+page is `force-dynamic` on purpose — a board rendering stale verdicts would be worse than a slow
+one.
+
+Fixed with `app/loading.tsx`, which gives Next an implicit Suspense boundary: the layout (nav,
+degradation banners, footer) now streams immediately and a skeleton fills the slot underneath
+while the data resolves. It does **not** make the cold start faster — it makes it legible, which
+is the difference between "this is loading" and "this is broken". The copy names the cause,
+because the one time a judge sees this screen for ten seconds, knowing why is the useful part.
+
+### §6.6 · Footer cross-check — **PASS**
+
+Present on every page, observed on `/selftest`, `/health` and a company card:
+
+```
+model gemini-3.8-flash · AI enabled
+to: demo@example.com (locked in code)
+All AI tasks run on Gemini Flash. The Claude API is not used.
+```
+
+### §7.7 · Production matches local — **PASS**
+
+```
+$ curl https://signal-sprinto.vercel.app/api/selftest
+
+model: gemini-3.8-flash
+TOTAL        passed 26  failed 0  skipped 0
+structural   17 passed, 0 failed, 0 skipped
+behavioural   9 passed, 0 failed, 0 skipped
+
+T-16  All 11 companies that cleared R-01 have a security-page attempt on record
+T-20  1 Send · 5 Hold · 6 Drop across 12 scored
+T-21  1 Send hook(s) checked, every quote found character-for-character on the page
+      its own URL points to
+```
+
+Identical to local. The live board shows the broadened sample set, and T-20 is green on merit —
+it reads the live database, so if the pipeline stopped producing Sends it would go red on the
+next page load.
+
+---
+
+## §9 · Gaps — every one, with the fix that was tried
+
+A gap is only a gap after the obvious fix has been tried and has failed. These four are the only
+items not demonstrated, and each says what was attempted.
+
+### GAP-1 · No real email has been sent (G4 F5, brief step 7)
+
+**Blocked on credentials I do not have.** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`GOOGLE_REFRESH_TOKEN`, `RESEND_API_KEY` and `EMAIL_FROM` are unset. Obtaining an OAuth refresh
+token requires signing into a Google account, which I will not do on someone's behalf.
+
+**What was tried instead:** the `dry_run` transport (§3), which writes a real `sends` row and
+renders the exact RFC-822 bytes. A test asserts the selector flips to `gmail` on credentials
+alone, so the first real send needs no code change.
+
+**What is still unproven:** that Gmail accepts the message, and that the Gmail → Resend fallback
+fires on a dead token (F5). The chain order and its disclosure are asserted by tests and by the
+F6 drill; the live behaviour is not.
+
+### GAP-2 · G4 D3 cannot pass, and should not
+
+`G4 §5 D3` expects the funding slider to move A4 from Hold to Send. It cannot at any weight —
+R-20 requires two independent groups and a funding-only company has one. **The obvious fix was
+tried and rejected on purpose:** making D3 pass means letting a press mention qualify a company,
+which is exactly what A4 forbids in the same document. Recorded as a specification error.
+
+What D3 was reaching for is demonstrated instead: the slider moves the score 10 → 45 and
+re-ranks the board with zero fetches and zero model calls.
+
+### GAP-3 · `FABRICATED` has never fired on a live run
+
+`/health` reports `0 fabrications blocked`, and that zero is honest — every bad quote found so
+far was real text that failed the *support* test, not invented text.
+
+**What was tried:** the labelled fixture drill (§2 A.1), which executes the shipped tiering
+functions and shows the tier firing. What cannot be manufactured is a real model hallucinating
+on a real company on demand; waiting for one would mean shipping an unproven branch.
+
+### GAP-4 · The F8 error banner needs JavaScript
+
+`app/error.tsx` is a client boundary, so a server-render failure still returns an empty body to a
+client that does not run JS. A judge in a browser sees the banner; `curl` sees a blank page.
+
+**What was tried:** `app/error.tsx` plus `app/global-error.tsx` for layout-level failures. A
+server-rendered static fallback would mean catching the error inside every page component rather
+than at the boundary, which trades one correct failure mode for thirteen hand-written ones.
+
+### Not a gap, recorded for completeness
+
+- **F3 (Hunter 429) and F7 (cost ceiling) were not forced against live services.** Both would
+  cost real credits or real money to observe, for assertions the code makes unconditionally and
+  that are visible in `QUOTA_GUARD_RATIO = 0.8` and `AI_COST_CEILING_USD = 1.00`. Marked
+  PASS (by construction) above rather than PASS, so the distinction is on the record.
+- **R-52's promotion and R-54's block ran against the production database.** They are real state
+  changes, not simulations: `everstage.com` is permanently blocked and will stay blocked.
+
