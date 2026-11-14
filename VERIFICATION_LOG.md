@@ -7,6 +7,30 @@ Starting commit: `1d7ca3c` (Phases 1–6 of `FIX_PROMPT.md`).
 
 ---
 
+## Summary
+
+| Verdict | Count | Where |
+|---|---|---|
+| **PASS** | 23 | §1 discipline · A.1 A.2 A.3 · Part B · §5 A4 M5 F1 F2 F4 F6 · §6.2 §6.3 §6.4 §6.5 §6.6 · §7.1 §7.2 §7.4 §7.5 §7.6 §7.7 |
+| **PASS (by construction)** | 2 | F3 Hunter 429, F7 cost ceiling — not forced against live services, and marked apart so the distinction is on the record |
+| **FAIL → fixed → PASS** | 2 | F8 blank screen on a database failure · §6.1 13.5s cold start |
+| **GAP** | 4 | §9 — no real email sent · G4 D3 is a spec error · FABRICATED unfired on a live run · the F8 banner needs JS |
+
+**Five real defects were found by executing paths that previously only had unit coverage**, none
+of them by reading the code:
+
+1. The contact ladder promoted a **Software Engineer over a Founder** (off-ladder tie fell
+   through to alphabetical email order; `seniority` was being ignored).
+2. The superseded contact kept the **ladder's** reason after R-52, not the human's.
+3. Pulling the database produced a **blank screen** — there was no error boundary at all.
+4. A cold production start was **13.5 seconds of blank page** — no loading state existed.
+5. The header overflowed **every page** at phone width once the Replies tab was added.
+
+A sixth finding was not a defect: my own `wrong_person` test reply contained an unsubscribe
+request, and AI-5 was right to classify it `unsubscribe`.
+
+---
+
 ## §1 · Measurement discipline
 
 `npm run build` while a dev server is running corrupts `.next` and silently kills hydration.
