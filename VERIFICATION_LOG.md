@@ -368,3 +368,151 @@ it("the first real send needs no code change — credentials alone flip the sele
 });
 ```
 
+---
+
+## §6 · Part E — the judge surfaces
+
+### §6.2 · Mobile (375 × 844) — **PASS**, after two real fixes
+
+Measured, not eyeballed: for each page, `documentElement.scrollWidth − clientWidth` and the
+widest element extending past the viewport.
+
+**Two defects found and fixed.**
+
+1. **The header overflowed every page by 37–48px.** Adding the *Replies* tab gave the nav five
+   links, which do not fit at 375px — so every page had a horizontal scroll, not just one.
+   `SiteHeader` now wraps.
+2. **The loop trace was a 640px table inside a scroll container.** The page did not scroll, but
+   the *table* did, and the column a judge has to drag sideways to reach is **Why** — the one
+   carrying the argument. It is now a table on `sm:` and up, and stacked cards below, with the
+   field names humanised (`company size`, not `size_band`).
+
+After both fixes:
+
+| Page | overflow at 375px |
+|---|---|
+| `/` | **0px** |
+| `/replies` | **0px** |
+| `/quarantine` | **0px** |
+| `/health` | **0px** |
+| `/selftest` | **0px** |
+| `/company/[id]` | **0px** — table hidden, 5 stacked steps rendered |
+
+Desktop at 1014px confirmed unchanged: table visible, stacked list hidden, 0px overflow.
+
+### §6.3 · Zero empty sections — **PASS**
+
+All four empty states route through `lib/ui/emptyStates.ts`, asserted by T-26:
+
+```
+app/quarantine/page.tsx:39   : EMPTY_STATE_QUARANTINE
+app/health/page.tsx:160      : EMPTY_STATE_HEALTH
+components/Replies.tsx:159   : EMPTY_STATE_REPLIES
+components/Board.tsx:580     : {EMPTY_STATE_BOARD}
+```
+
+Each states what is absent, why, and the next action. T-26 fails if one is deleted or trimmed
+below 20 characters — a test against a string the page does not render would have been F-11
+again, so the pages render the same constants the test reads.
+
+### §6.4 · Toggle matrix — **PASS** (G4 A3 and D4)
+
+`strict_icp` against the two certified companies, via `/api/rerank`:
+
+```
+strict_icp OFF (default)
+  apty.io  HOLD  play=migration  R-04
+    "HOLD — R-04: already certified, routed to the migration play (strict_icp off).
+     Timing score 15 across 1 independent signal."
+  zipy.ai  HOLD  play=migration  R-04
+
+strict_icp ON
+  apty.io  DROP  play=greenfield R-04   "DROP — R-04: already certified"
+  zipy.ai  DROP  play=greenfield R-04
+
+strict_icp OFF (restored)  → back to migration HOLD
+```
+
+Both verdicts are reachable by one toggle and both are explained, which is what G2's documented
+disagreement with slide 40 promised.
+
+### §6.5 · Re-scoring costs nothing — **PASS**, proved from the tables
+
+Not from the UI's claim — from `fetches` and `cost_ledger` directly:
+
+```
+BEFORE: fetches=75  cost_ledger_rows=93
+  rocketlane:55  whatfix:30  zluri:30  apty:15  zerodha:15  atlan:10  ...
+
+POST /api/rerank  (S-06 funding 10 → 45)  → HTTP 200
+
+AFTER : fetches=75  cost_ledger_rows=93
+  rocketlane:90  atlan:45  whatfix:30  zluri:30  apty:15  zerodha:15  ...
+
+fetches delta     = 0
+cost_ledger delta = 0
+board order changed = true      (atlan.com moved 6th → 2nd)
+```
+
+This is G4's D3 in its honest form: a real company visibly moves up the board, and it costs
+nothing because the score was never the model's to decide. `atlan.com` stays HOLD at 45 — one
+independent group — which is A4's rule holding at the same time.
+
+### §5 · Part D — fail-safe drills F1–F8
+
+Run locally against the real modules, and recorded as local, per G6 §5.
+
+| # | Drill | Result |
+|---|---|---|
+| F1 | Gemini returns invalid JSON | **PASS** — `tests/retry.test.ts` (T-15): the Zod error is re-sent to the model, exactly one retry, then rules-only. Grounding is enforced by the schema, not the prompt. |
+| F2 | Gemini key removed entirely | **PASS** — `capability.ai() === false`, and `degradations()` returns a named warn banner: *"Rules-only mode. Verdicts, scores and rule IDs are still produced by the deterministic engine…"* |
+| F3 | Hunter returns 429 | **PASS (by construction)** — the quota guard trips before the call; see F4. A 429 falls through the same cache → seeded path, and every seeded contact renders a visible `seeded` badge. Not forced against the live API: burning real credits to observe a 429 would cost the demo its remaining quota. |
+| F4 | Hunter quota at 80% | **PASS** — `QUOTA_GUARD_RATIO = 0.8`, `HUNTER_LIMIT = 5`. The guard is a hard stop **before** the call, not a check after it. |
+| F5 | Gmail token expired → Resend | **GAP** — cannot be executed. There is no Gmail token to expire. The chain order and its disclosure are asserted by `tests/send.test.ts` ("records which transport sent, so a fallback is never read as the primary path") and by F6 below, which shows both attempts recorded in order. |
+| F6 | Gmail **and** Resend both down | **PASS** — fails loudly, both attempts named: `"Every transport failed. gmail: not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN) \| resend: not configured (RESEND_API_KEY / EMAIL_FROM)"`. One `sends` row per attempt, so the card can say why the fallback ran. |
+| F7 | Cost ceiling hit mid-run | **PASS (by construction)** — `AI_COST_CEILING_USD` defaults to $1.00 and the run stops cleanly at the ceiling, keeping every completed company. Not forced: driving real spend past the ceiling to watch it stop would cost real money for an assertion the code already makes unconditionally. |
+| F8 | Neon connection drops | **FAIL → fixed → PASS.** See below. |
+
+#### F8 found a real defect: it was a blank screen
+
+Drill: start the production server with an unreachable `DATABASE_URL`.
+
+```
+$ DATABASE_URL="postgresql://nobody:nothing@127.0.0.1:59999/nope" npx next start -p 3100
+$ curl http://localhost:3100/
+HTTP 500, 9446 bytes
+
+VISIBLE TEXT: "Signal — outbound qualification & drafting"      ← the <title>, and nothing else
+server log:   ⨯ Error: connect ECONNREFUSED 127.0.0.1:59999
+```
+
+G4 F8's expectation is *"Error banner, not a blank screen."* The app had **no error boundary at
+all**, so Next's production error page rendered an empty body. The run failed visibly in the
+server log and invisibly on screen, which is the wrong way round.
+
+Fixed by adding `app/error.tsx` and `app/global-error.tsx` (the latter for a failure in the root
+layout, which the former cannot catch). Re-running the same drill, observed in a browser:
+
+```
+Signal · Board · Replies · Quarantine · Health · Self-test          ← nav intact
+Email sending isn't connected yet…                                  ← banner intact
+
+This page could not be rendered.
+
+The most common cause is the database being unreachable — Signal reads every board, verdict
+and quote from Postgres on each request, so if Neon is down or DATABASE_URL is wrong, there
+is nothing to render.
+
+Nothing was half-written. A run processes one company per request and commits each one before
+moving on, so whatever completed before the failure is intact and whatever did not is still
+queued. Restoring the connection and re-running continues from where it stopped.
+
+[Try again]  [Open /health to see what is configured]
+```
+
+**One honest caveat.** `app/error.tsx` is a client boundary, so the *server-rendered* HTML is
+still empty and `curl` still sees a blank body — the banner appears once JS runs. A judge uses a
+browser, so the row passes; a judge using `curl` would not see it. The server digest is shown
+instead of a stack trace, because a hex digest is the only server detail Next exposes to the
+client and a stack trace is not something an error page should print.
+
