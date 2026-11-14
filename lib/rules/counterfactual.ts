@@ -29,6 +29,8 @@ export type Counterfactual = {
   suggestedUrl?: string;
   /** Set when the reader should be offered an inline correction (R-02b). */
   override?: "size_band";
+  /** §6.3 — an applied reply changed something about this company since it was scored. */
+  replyNote?: string;
 };
 
 export type CounterfactualInput = {
@@ -48,6 +50,12 @@ export type CounterfactualInput = {
   size_source: string | null;
   /** How many open roles the size inference counted, when it inferred one. */
   inferred_role_count?: number | null;
+  /**
+   * §6.3 — the most recent applied reply, if any. A reply is newer information than the run
+   * that produced the verdict, so it belongs at the top of "what would move this" rather than
+   * buried in a history panel.
+   */
+  latestReply?: { rule: string; intent: string; effect: string } | null;
 };
 
 /** The highest-value signal that has not fired, so the suggestion is worth the reader's time. */
@@ -79,6 +87,42 @@ export function counterfactualFor(input: CounterfactualInput): Counterfactual {
   const rule = input.rule_fired ?? "";
   const score = input.timing_score ?? 0;
   const groups = input.independent_signals ?? 0;
+
+  // §6.3 — a reply outranks the verdict's own reasoning, because it is newer and it came from
+  // the person we wrote to. R-52 in particular changes who the draft is addressed to, which
+  // makes the existing draft stale in a way the score cannot express.
+  const reply = input.latestReply ?? null;
+  if (reply && reply.rule === "R-52") {
+    return {
+      text: "They replied that we had the wrong person, so the contact ladder was re-run with them excluded and the runner-up promoted. The draft above still opens to the previous contact — re-draft it before sending.",
+      actionable: true,
+      replyNote: `${reply.rule} applied — contact re-laddered after a reply`,
+    };
+  }
+  if (reply && reply.effect === "block") {
+    return {
+      text: "They asked not to be contacted again, and this domain is permanently blocked. Every future run quarantines it before any page is fetched. Nothing here is actionable, and that is the correct outcome.",
+      actionable: false,
+      replyNote: `${reply.rule} applied — permanent block`,
+    };
+  }
+  if (reply && reply.effect === "won") {
+    return {
+      text: "They replied with interest. This is a human conversation now — outreach is stopped so the sequence cannot talk over it.",
+      actionable: false,
+      replyNote: `${reply.rule} applied — marked won`,
+    };
+  }
+  if (reply && (reply.effect === "snooze" || reply.effect === "suppress")) {
+    return {
+      text:
+        reply.effect === "snooze"
+          ? "They asked us to come back later, so this is snoozed rather than suppressed — it stays on the board and ranks below live prospects until the date passes."
+          : "They told us they are not interested, and the reason is recorded. Future runs skip this domain until the suppression lapses.",
+      actionable: reply.effect === "snooze",
+      replyNote: `${reply.rule} applied — ${reply.effect}`,
+    };
+  }
 
   /* ---------------------------------------------------------------- fit drops */
 

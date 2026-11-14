@@ -25,6 +25,7 @@ import type {
   FeedbackRow,
   LoopTraceRow,
   PainPointRow,
+  ReplyRow,
   SendRow,
   SignalRow,
 } from "@/lib/db/queries";
@@ -81,6 +82,8 @@ export function CompanyDetail(props: {
   lockedTo: string | null;
   /** §6.2 — the run's weights, so the counterfactual prices the signal that is missing. */
   weights: Weights;
+  /** §6.3 — the newest applied reply, which outranks the verdict's own reasoning. */
+  latestReply: ReplyRow | null;
 }) {
   const { company } = props;
 
@@ -127,11 +130,13 @@ function VerdictSection({
   whatWouldChangeIt,
   signals,
   weights,
+  latestReply,
 }: {
   company: CompanyView;
   whatWouldChangeIt: string | null;
   signals: SignalRow[];
   weights: Weights;
+  latestReply: ReplyRow | null;
 }) {
   const e = company.evidence;
   // §6.2 — only verified, scoring signals count as evidence we actually have.
@@ -149,6 +154,9 @@ function VerdictSection({
     security_page_url: company.security_page_url,
     size_band: e.size_band,
     size_source: e.size_source ?? null,
+    latestReply: latestReply
+      ? { rule: latestReply.rule_fired, intent: latestReply.intent, effect: latestReply.effect }
+      : null,
   });
   return (
     <Card>
@@ -193,6 +201,12 @@ function VerdictSection({
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-400">
             {cf.actionable ? "What would move this" : "Nothing would move this"}
           </p>
+          {cf.replyNote ? (
+            <p className="mb-1 flex flex-wrap items-center gap-1.5">
+              <Badge tone="accent">reply</Badge>
+              <span className="text-[11px] font-semibold text-accent-soft">{cf.replyNote}</span>
+            </p>
+          ) : null}
           <p className="text-xs leading-relaxed text-ink-100">{cf.text}</p>
           {cf.suggestedUrl ? (
             <a

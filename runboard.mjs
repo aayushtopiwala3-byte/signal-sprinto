@@ -5,7 +5,14 @@ import postgres from "postgres";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const src = fs.readFileSync("lib/seed/sampleDomains.ts", "utf8");
-const DOMAINS = [...src.matchAll(/^\s{2}"([^"]+)",/gm)].map((m) => m[1]);
+// Only the SAMPLE_DOMAINS array. An earlier version of this regex also matched SAMPLE_NOTES,
+// which injected six prose strings into the run and polluted the quarantine with
+// `invalid_domain` rows. The run was still valid for the real domains, but the board was noisy.
+const block = src.slice(
+  src.indexOf("SAMPLE_DOMAINS: string[] = ["),
+  src.indexOf("];", src.indexOf("SAMPLE_DOMAINS: string[] = [")),
+);
+const DOMAINS = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 console.log(`submitting ${DOMAINS.length} entries`);
 
 const dbUrl = fs

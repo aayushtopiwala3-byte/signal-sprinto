@@ -15,7 +15,7 @@ import { DEFAULT_WEIGHTS } from "@/lib/types";
  * here against frozen HTML would be asserting a different thing from what the board shows.
  */
 
-const tiered = (pages: { url: string; text: string }[]) =>
+const tiered = (pages: { url: string; text: string; title: string | null }[]) =>
   applyEvidenceTiers(
     detectSignals({ evidence: fittingEvidence({ size_band: "11-50" }), pages }, weights()),
     "example.com",

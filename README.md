@@ -225,6 +225,31 @@ board; a signal at weight 0 keeps its evidence but contributes nothing.
 | R-23 | signals fired, but none of them survived the evidence check | **DROP** — nothing here is supported |
 
 R-22 never touches a fit-gate DROP: an evidenced rejection is not made uncertain by a gap.
+R-22 also does not gate on `size_band`: R-02c says an unknown headcount must not decide a
+verdict, and gating here would be that rule re-imposed one step later (D-41).
+
+### Every rule, in one place
+
+| ID | Where | What it decides |
+|---|---|---|
+| R-01 | fit | Not B2B SaaS → DROP |
+| R-02a | fit | Headcount > 500, stated on their site → DROP |
+| R-02b | fit | Headcount inferred > 500 from open roles → DROP |
+| R-02c | fit | Headcount unknown → **does not gate**; flagged and named in the counterfactual |
+| R-03 | fit | Services business, not a software product → DROP |
+| R-04 | fit | Already certified → migration play (or DROP with `strict_icp` on) |
+| R-20 | verdict | Timing score: ≥ 50 with ≥ 2 groups sends, 20–49 holds, < 20 drops |
+| R-21 | verdict | Score clears 50 but only one independent group → HOLD |
+| R-22 | verdict | A verdict-critical field is still unknown at the fetch cap → HOLD |
+| R-23 | evidence | Only `verified` evidence scores; `asserted` scores 0; `fabricated` is never shown |
+| R-30 | contact | Headcount-conditional ladder; generic mailboxes are never selectable |
+| R-40 | draft | Subject must be sentence case, 4–9 words, ≤ 60 chars, and not end on a dangling word |
+| R-50 | reply | `interested` → won, stop outreach |
+| R-51 | reply | `not_now` → snooze 90 days, **not** suppressed |
+| R-52 | reply | `wrong_person` → re-run the ladder excluding them, promote the runner-up |
+| R-53 | reply | `not_interested` → suppress 180 days with the reason |
+| R-54 | reply | `unsubscribe` → **permanent block**, typed confirmation, no undo |
+| R-55 | reply | `unclear` → no automatic action |
 
 ### Evidence tiers — `lib/rules/evidenceTier.ts`
 
@@ -385,14 +410,69 @@ accepting an ungrounded answer.
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm run test    # 91 tests
+npm run test    # 230 tests
 npm run build
 ```
 
+> **Never run `npm run build` while `npm run dev` is running.** It overwrites `.next` underneath
+> the dev server, `main-app.js` starts 404ing, and the page stops hydrating silently — it looks
+> like a React bug and is not one. This cost a round of verification during Phase 5. Verify
+> interactive behaviour against `npm run build && npm start`.
+
 No login, no password, no paywall. With zero credentials set, the app boots an in-memory PGlite
 database and runs rules-only — every page is usable, every banner explains what is degraded.
-`.env.example` documents all 12 variables. `GMAIL_SEND_TO` is the one the app refuses to send
-without.
+`GMAIL_SEND_TO` is the one variable the app refuses to start without.
+
+### Environment variables
+
+| Variable | Required? | Without it |
+|---|---|---|
+| `GMAIL_SEND_TO` | **yes** | The app refuses to start. The locked recipient is never defaulted. |
+| `DATABASE_URL` | production | In-memory PGlite; data is lost per invocation. Red banner on `/health`. |
+| `GEMINI_API_KEY` | no | Rules-only mode. Verdicts still produced; no extraction, no drafts. |
+| `OPENROUTER_API_KEY` | no | Transport fallback only; the model stays pinned to Gemini Flash. |
+| `AI_COST_CEILING_USD` | no | Defaults to $1.00 per run. |
+| `HUNTER_API_KEY` | no | Seeded contacts, badged `seeded` on every card. |
+| `GOOGLE_CLIENT_ID` | **not yet set** | ⬐ |
+| `GOOGLE_CLIENT_SECRET` | **not yet set** | ⬐ |
+| `GOOGLE_REFRESH_TOKEN` | **not yet set** | No Gmail transport. |
+| `RESEND_API_KEY` | **not yet set** | ⬐ |
+| `EMAIL_FROM` | **not yet set** | No Resend fallback. |
+| `SENDER_NAME` | no | The signature falls back to "the Growth Lead at Sprinto". |
+| `NEXT_PUBLIC_SITE_URL` | no | Absolute links may not resolve in a deployed environment. |
+
+The five marked **not yet set** are the outstanding ones. Until they exist, Approve-and-send
+takes the `dry_run` path below.
+
+### `dry_run` — the transport that does not transmit
+
+With **no** send credentials configured, Approve-and-send:
+
+1. writes a real `sends` row with `transport = 'dry_run'` and `status = 'not_sent'`,
+2. renders **"Not sent — no mail transport is configured."**, and
+3. prints the exact RFC-822 bytes the Gmail path would base64url-encode — headers, `To:`,
+   `From:` with `SENDER_NAME`, the R-40-validated subject, and the body.
+
+Three properties make this safe rather than a fudge:
+
+- **It cannot shadow a real send.** `dryRunAvailable()` is false the moment Gmail *or* Resend is
+  configured, and `tests/dryRun.test.ts` asserts that — including the one-line check that the
+  selector flips to `gmail` on credentials alone, with no code change.
+- **It sits outside the transport chain.** `sendEmail` still walks Gmail → Resend → fail loudly.
+  The dry run is checked *before* that chain is entered, never as a fallback inside it, so a
+  transport failure can never silently downgrade into "well, here are the bytes".
+- **It never calls itself a send,** in any tense. `/health` counts `dry-run` separately from
+  `sent` and from `send failed`, because folding it into either would be a lie in a different
+  direction.
+
+### Why `MAX_EXTRA_FETCHES = 4`
+
+The figure is from the L4 deck's agent-loop constraint and was fixed before any code was
+written; it is not a tuned number and it has not moved through six phases of changes. What
+changed in Phase 1 is **who spends it**: slots 1 and 2 are reserved for the security/trust page
+and the careers page, and only slots 3–4 are the model's to choose. Raising the cap would have
+bought more of the same bad choices; reserving two changed the choice itself. See
+*Reserved fetches* above and D-41.
 
 ---
 

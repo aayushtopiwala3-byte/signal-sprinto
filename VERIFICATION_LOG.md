@@ -152,3 +152,145 @@ R-30 ranks `info@` / `hello@` / `support@` at 99 and the selector refuses them o
 rule M5 is really testing — *"the system would rather hold than send to a mailbox nobody
 reads"* — holds.
 
+### A.3 · R-52 promotes a runner-up on real data — **PASS**, after fixing two defects it exposed
+
+Executing this path found two real bugs. Both are fixed; neither was found by reading the code.
+
+#### Defect 1 — the ladder promoted a Software Engineer over a Founder
+
+First attempt, on `zipy.ai`. `size_band` is unknown there, so the null band uses the 51–200
+ladder, on which neither "Founder" nor "Software Engineer" appears — both landed off-ladder at
+rank 99 with confidence 70. The tiebreak then fell through to **alphabetical email order**:
+
+```
+BEFORE  SELECTED rank=2  Anchal Rastogi  | Chief Technology Officer
+                 rank=99 Sandesh Murdia  | Software Engineer   seniority=null
+                 rank=99 Vishalini Paliwal | Founder           seniority=executive
+
+APPLY → {"applied":true,"rule":"R-52","note":"Promoted Sandesh Murdia"}     ← wrong person
+```
+
+Hunter already returns a `seniority` field and the ranker was ignoring it. `selectContact` now
+breaks a ladder tie on seniority **before** confidence. That ordering is consistent with the
+design rather than new: confidence is *deliverability*, not relevance, and the ladder already
+prefers relevance over deliverability (a named person at confidence 40 beats `info@` at 95).
+Locked in `tests/poc.test.ts` with the real Hunter rows, including that an unknown seniority
+sorts last and that seniority never rescues a generic mailbox.
+
+#### Defect 2 — my own test reply was ambiguous, and AI-5 was right to call it
+
+My first `wrong_person` fixture ended *"Please don't send this to me again."* AI-5 classified it
+`unsubscribe` at confidence 0.90 with that exact sentence quoted. **The model was correct** — that
+is an unsubscribe request — and it erred toward the conservative reading, which is what the
+prompt asks for. The fixture was the problem, not the classifier. Replaced with a reply that is
+unambiguously about the person and not about contact.
+
+#### The clean execution, on `zluri.com`
+
+```
+CLASSIFY  intent=wrong_person  confidence=0.95
+          quote="I'm not the right person for this one."     ← verbatim in the reply
+          action R-52 · effect=recontact · requiresTypedConfirmation=false
+
+APPLY → HTTP 200 {"ok":true,"applied":true,"rule":"R-52","effect":"recontact",
+                  "note":"Promoted Aditi Sharma"}
+
+BEFORE  SELECTED rank=99 Sethu Meenakshisundaram | Cofounder          conf=98 executive
+                 rank=99 Divyam Sharma           | Software Engineer  conf=97 (no seniority)
+                 rank=99 Aditi Sharma            | Head of GTM        conf=96 executive
+
+AFTER   SELECTED rank=99 Aditi Sharma            | Head of GTM
+                 rank=99 Sethu Meenakshisundaram | Cofounder
+                   lost: "R-52: they replied that they are not the right person
+                          — superseded on 2026-11-14"
+                 rank=99 Divyam Sharma           | Software Engineer
+```
+
+Three things to note:
+
+- **The ladder re-ran and the runner-up was promoted.** ✅
+- **The seniority fix is visible here too:** Divyam (confidence 97, no seniority) would have won
+  under the old ordering. The Head of GTM, an executive at 96, beat the IC at 97.
+- **The superseded primary records the reply as the cause**, not the ladder's original reason.
+  `supersedeContact` writes it; `swapSelectedContact` alone left "ladder rank 99 vs 2", which
+  says nothing about a human having told us we had the wrong person.
+
+And the detail page's panel, observed on screen:
+
+```
+WHAT WOULD MOVE THIS
+  [reply]  R-52 applied — contact re-laddered after a reply
+  They replied that we had the wrong person, so the contact ladder was re-run with them
+  excluded and the runner-up promoted. The draft above still opens to the previous contact —
+  re-draft it before sending.
+```
+
+A reply is newer information than the run that produced the verdict, so it is rendered above the
+verdict's own reasoning rather than in a history panel. The verdict's `what_would_change_it`
+("20 more points and 1 more independent signal") is kept below it — §0 protects that panel.
+
+### A.2 · R-54 executes a permanent block — **PASS**
+
+**Target: `everstage.com`.** R-54 cannot be run against the board's only Send, and every domain
+in the original twelve carries a demonstration (`apty.io` is the `strict_icp` toggle,
+`springworks.in` the R-22 handoff, `zipy.ai` the R-23 asserted quotes, `zerodha.com` R-01,
+`whatfix.com` R-02a, `sprinto-test-does-not-exist-9x.com` the dead domain). `everstage.com` is
+one of the four new domains and landed HOLD on R-04 — a migration-play example that `apty.io`
+already provides. It is the row that carries the least unique demo weight, which is the whole
+selection criterion §2 A.2 sets.
+
+**No undo was added.** Permanence is the point, and `setOutreachState` additionally refuses to
+move a domain *out* of `block` by any later reply.
+
+#### Step 1 — the guard a judge will test: wrong confirmation phrase
+
+```
+POST /api/reply  {mode:"apply", intent:"unsubscribe", confirmation:"block permanently"}
+→ HTTP 400 {"error":"R-54 is permanent and requires the exact phrase
+                      \"BLOCK PERMANENTLY\" to be typed."}
+
+outreach_state AFTER: (none)          ← nothing written
+```
+
+Lower-case fails. The check runs server-side, not only in the browser, so disabling the button
+is not the only thing standing between a misclick and a permanent block.
+
+#### Step 2 — the full path with the correct phrase
+
+```
+CLASSIFY  intent=unsubscribe  confidence=1.00
+          quote="please take us off your list permanently."   ← verbatim in the reply
+          action R-54 · effect=block · requiresTypedConfirmation=true
+                      · confirmationPhrase="BLOCK PERMANENTLY"
+
+APPLY → HTTP 200 {"ok":true,"applied":true,"rule":"R-54","effect":"block"}
+```
+
+`outreach_state`, before and after:
+
+```
+BEFORE  (none)
+
+AFTER   {"domain":"everstage.com","kind":"block","rule":"R-54",
+         "reason":"Block this domain permanently. Every future run quarantines it before any
+                   page is fetched. This cannot be undone from this interface.",
+         "until":null,                       ← no expiry. This is what permanent means.
+         "created_at":"2026-11-14T04:33:44.400Z"}
+```
+
+#### Step 3 — the next run skips it, with a named reason
+
+The very next run of the sample set, before any page was fetched:
+
+```
+$ node runboard.mjs
+submitting 16 entries
+run: run_5106aa7bfecc4154b19f  queued: 13  dupes: 2        ← 14 unique, 13 queued
+suppressed at start:
+   everstage.com :: R-54: they asked not to be contacted again. This block is permanent.
+```
+
+The gate sits in `/api/run/start` **before** `insertCompany`, so the domain is never queued and
+therefore never fetched. A blocked domain that got queued and then fetched would have been
+contacted in every sense that matters.
+

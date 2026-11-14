@@ -128,6 +128,23 @@ export function isGeneric(candidate: HunterCandidate): boolean {
  * Rank by ladder rung first, then Hunter confidence desc (§5.4). Email is the final tiebreak so
  * the ordering is total and the same response always yields the same selection (T-14).
  */
+/**
+ * Hunter's seniority field, ordered. An absent value sorts last rather than first: "we do not
+ * know what this person does" is not evidence that they are senior.
+ */
+export function seniorityOrder(seniority: string | null | undefined): number {
+  switch ((seniority ?? "").toLowerCase()) {
+    case "executive":
+      return 0;
+    case "senior":
+      return 1;
+    case "junior":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 export function selectContact(
   candidates: HunterCandidate[],
   sizeBand: SizeBand | null,
@@ -155,6 +172,20 @@ export function selectContact(
     })
     .sort((a, b) => {
       if (a.ladder_rank !== b.ladder_rank) return a.ladder_rank - b.ladder_rank;
+      // Seniority breaks a ladder tie before confidence does, and that ordering is deliberate.
+      //
+      // Found by actually executing R-52 (G6 §2 A.3): on zipy.ai the ladder had already been
+      // exhausted — every remaining candidate was off-ladder at rank 99 — and two of them tied
+      // on confidence at 70. The tiebreak fell through to alphabetical email order and promoted
+      // a **Software Engineer** over a **Founder**. Deterministic, and wrong.
+      //
+      // Hunter's `confidence` is deliverability, not relevance: it says how sure Hunter is that
+      // the address works, not that the person is the right one to ask about SOC 2. The ladder
+      // already prefers relevance over deliverability (a named person at confidence 40 beats
+      // info@ at 95), so continuing that order below the ladder is consistent rather than new.
+      const sa = seniorityOrder(a.seniority);
+      const sb = seniorityOrder(b.seniority);
+      if (sa !== sb) return sa - sb;
       if (a.confidence !== b.confidence) return b.confidence - a.confidence;
       return a.email.localeCompare(b.email);
     });

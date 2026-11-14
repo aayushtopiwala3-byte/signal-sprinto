@@ -147,7 +147,18 @@ export async function POST(request: Request) {
     const next = selectContact(pool, company.size_band as never);
     if (next.ok) {
       const promoted = lookup.find((c) => c.email === next.selected.email);
-      if (promoted) await q.swapSelectedContact(companyId, promoted.id);
+      if (promoted && current) {
+        // R-52 records *why* the contact changed, not just that it did. "ladder rank 99 vs 2"
+        // is the ladder's reason; it is not the reason a human gave.
+        await q.supersedeContact({
+          companyId,
+          supersededId: current.id,
+          promotedId: promoted.id,
+          reason: `R-52: they replied that they are not the right person — superseded on ${new Date().toISOString().slice(0, 10)}`,
+        });
+      } else if (promoted) {
+        await q.swapSelectedContact(companyId, promoted.id);
+      }
       note = `Promoted ${next.selected.first_name ?? ""} ${next.selected.last_name ?? ""}`.trim();
       applied = true;
     } else {

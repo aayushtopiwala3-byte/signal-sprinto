@@ -614,6 +614,36 @@ export async function swapSelectedContact(
   await sql`UPDATE contacts SET selected = true WHERE id = ${contactId} AND company_id = ${companyId}`;
 }
 
+/**
+ * R-52's promotion (§6.3), with the cause written down.
+ *
+ * `swapSelectedContact` alone leaves the superseded person carrying whatever `lost_reason` the
+ * ladder gave them originally — "ladder rank 99 vs 2" — which says nothing about the fact that
+ * a human told us they were the wrong person. The reason a contact changed is the whole audit
+ * trail for R-52, so it is recorded on the row rather than inferred from a timestamp.
+ */
+export async function supersedeContact(input: {
+  companyId: string;
+  supersededId: string;
+  promotedId: string;
+  reason: string;
+}): Promise<void> {
+  await sql`UPDATE contacts SET selected = false WHERE company_id = ${input.companyId}`;
+  await sql`
+    UPDATE contacts SET selected = true, lost_reason = NULL
+    WHERE id = ${input.promotedId} AND company_id = ${input.companyId}`;
+  await sql`
+    UPDATE contacts SET lost_reason = ${input.reason}
+    WHERE id = ${input.supersededId} AND company_id = ${input.companyId}`;
+}
+
+/** The most recent applied reply for a company, for the card and the counterfactual. */
+export async function latestAppliedReply(companyId: string): Promise<ReplyRow | null> {
+  return one<ReplyRow>`
+    SELECT * FROM replies WHERE company_id = ${companyId} AND applied = true
+    ORDER BY created_at DESC LIMIT 1`;
+}
+
 /* ------------------------------------------------------------- pain points */
 
 export type PainPointRow = {

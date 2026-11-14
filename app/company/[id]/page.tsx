@@ -33,6 +33,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
   ]);
 
   const sends = draft ? await q.sendsFor(draft.id) : [];
+  const latestReply = await q.latestAppliedReply(company.id);
 
   const weights = run ? q.runWeights(run) : undefined;
   const switches = run ? q.runSwitches(run) : undefined;
@@ -97,6 +98,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
         feedback={feedback}
         lockedTo={sendToOrNull()}
         weights={weights ?? DEFAULT_WEIGHTS}
+        latestReply={latestReply}
       />
     </div>
   );

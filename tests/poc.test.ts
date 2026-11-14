@@ -140,3 +140,81 @@ describe("the runner-up and why it lost (§5.4)", () => {
     expect(first.ok && second.ok && first.selected.email === second.selected.email).toBe(true);
   });
 });
+
+/**
+ * G6 §2 A.3 — found by executing R-52 on real data, not by reading the code.
+ *
+ * zipy.ai's `size_band` is unknown, so the null band uses the 51–200 ladder, on which neither
+ * "Founder" nor "Software Engineer" appears. Both candidates landed off-ladder at rank 99 with
+ * confidence 70, and the tiebreak fell through to alphabetical email order — promoting the
+ * Software Engineer. The figures below are the real Hunter rows from that run.
+ */
+describe("R-30 · seniority breaks a ladder tie before confidence does", () => {
+  const sandesh = {
+    first_name: "Sandesh",
+    last_name: "Murdia",
+    position: "Software Engineer",
+    seniority: null,
+    department: "it",
+    email: "sandesh.murdia@zipy.ai",
+    confidence: 70,
+    type: "personal",
+  };
+  const vishalini = {
+    first_name: "Vishalini",
+    last_name: "Paliwal",
+    position: "Founder",
+    seniority: "executive",
+    department: "executive",
+    email: "vishalini.paliwal@zipy.ai",
+    confidence: 70,
+    type: "personal",
+  };
+
+  it("promotes the Founder over the Software Engineer when both are off-ladder", () => {
+    const poc = selectContact([sandesh, vishalini], null);
+    expect(poc.ok).toBe(true);
+    if (poc.ok) {
+      expect(poc.selected.email).toBe("vishalini.paliwal@zipy.ai");
+      expect(poc.selected.ladder_rank).toBe(99);
+      // Alphabetical order would have picked the other one, which is what it used to do.
+      expect(poc.selected.email.localeCompare(sandesh.email)).toBeGreaterThan(0);
+    }
+  });
+
+  it("an unknown seniority sorts last, not first", () => {
+    const unknown = { ...sandesh, email: "aaa@zipy.ai" };
+    const poc = selectContact([unknown, vishalini], null);
+    // `aaa@` wins on alphabetical order and ties on confidence; seniority is what decides.
+    if (poc.ok) expect(poc.selected.email).toBe("vishalini.paliwal@zipy.ai");
+  });
+
+  it("the ladder still outranks seniority — relevance before title", () => {
+    const cto = {
+      first_name: "Anchal",
+      last_name: "Rastogi",
+      position: "Chief Technology Officer",
+      seniority: "executive",
+      department: "it",
+      email: "anchal.rastogi@zipy.ai",
+      confidence: 67,
+      type: "personal",
+    };
+    // The CTO is on the 51–200 ladder at rank 2; the Founder is off it at 99.
+    const poc = selectContact([vishalini, cto], null);
+    if (poc.ok) {
+      expect(poc.selected.email).toBe("anchal.rastogi@zipy.ai");
+      expect(poc.selected.ladder_rank).toBeLessThan(99);
+    }
+  });
+
+  it("seniority never rescues a generic mailbox", () => {
+    const poc = selectContact(
+      [
+        { first_name: null, last_name: null, position: null, seniority: "executive", department: null, email: "info@zipy.ai", confidence: 99, type: "generic" },
+      ],
+      null,
+    );
+    expect(poc.ok).toBe(false);
+  });
+});
