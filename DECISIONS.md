@@ -785,3 +785,31 @@ What D3 was reaching for is still demonstrable and was demonstrated: the slider 
 (10 → 45) and re-ranks the board with zero fetches and zero model calls — `atlan.com` moved from
 sixth to second. Customisation is real; it just cannot manufacture independence, because
 independence is a different test from weight.
+
+### D-54 · Resend, not Gmail, because the easiest road that closes the gap is the right one [post-G6]
+GAP-1 — no real email ever sent — was the last open acceptance criterion, and the brief assumed
+it would be closed with Gmail OAuth. It was closed with Resend instead: a key, two environment
+values and a redeploy, against a Google Cloud path that needs a consent screen, a published
+app and an OAuth playground exchange. **No code changed**, because the Resend transport was
+already in the chain as the disclosed fallback and `dryRunAvailable()` already stood aside the
+moment any credential appeared.
+
+Two consequences are worth stating rather than hiding.
+
+`GMAIL_SEND_TO` moved from `demo@example.com` to a real inbox. That was forced: Resend refuses
+to deliver anywhere but the account owner's address until a domain is verified. The constraint
+was found without sending anything — a probe to a third-party address returned `403` naming the
+permitted recipient — which is the same discipline R-23 applies to evidence: establish the fact
+before acting on it.
+
+The chain now falls through on an **absent** Gmail token rather than a **dead** one. G4 F5 asks
+for the latter. The branch taken is identical and the disclosure is identical, but the trigger is
+weaker, and `VERIFICATION_LOG.md` says so under GAP-1 rather than letting a green row imply more
+than was observed. The alternative — fabricating a dead token to force the path — would be
+staging evidence, which is the one thing this build exists to refuse.
+
+The send itself carried `"to": "attacker@evil.com"` and `"recipient": "attacker@evil.com"` in the
+request body on purpose. Both were returned in `ignored_body_fields` and the mail went to
+`GMAIL_SEND_TO`. T-13 normally *skips* once a transport is configured — deliberately, so
+`/selftest` does not send mail on every page load — so this is the first and only time the
+recipient lock has been exercised against a live transport.

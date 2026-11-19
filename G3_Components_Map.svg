@@ -1,0 +1,365 @@
+<svg viewBox="0 0 1600 1780" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif">
+<rect x="0" y="0" width="1600" height="1780" fill="#ffffff"/>
+
+<text x="800" y="34" text-anchor="middle" font-size="24" font-weight="bold" fill="#0f172a">Signal — Components Map</text>
+<text x="800" y="54" text-anchor="middle" font-size="12" fill="#64748b">Mesa C4 · AI and its Applications · Term 2, AI Case 2 — "Cold Outreach, at Scale" (Sprinto) · as built, 17 Nov 2026</text>
+
+<!-- legend -->
+<g font-size="11" fill="#334155">
+<rect x="230" y="74" width="14" height="14" rx="3" fill="#ec4899"/>
+<text x="250" y="85">AI judgement (Gemini Flash)</text>
+<rect x="520" y="74" width="14" height="14" rx="3" fill="#3b82f6"/>
+<text x="540" y="85">deterministic code</text>
+<rect x="760" y="74" width="14" height="14" rx="3" fill="#14b8a6"/>
+<text x="780" y="85">data, database &amp; external APIs</text>
+<rect x="1080" y="74" width="14" height="14" rx="3" fill="#f59e0b"/>
+<text x="1100" y="85">a person acts</text>
+</g>
+
+<!-- table border / grid -->
+<rect x="0" y="110" width="1600" height="1405" fill="none" stroke="#cbd5e1"/>
+<g stroke="#e2e8f0">
+<line x1="190" y1="110" x2="190" y2="1515"/>
+<line x1="425" y1="110" x2="425" y2="1515"/>
+<line x1="660" y1="110" x2="660" y2="1515"/>
+<line x1="895" y1="110" x2="895" y2="1515"/>
+<line x1="1130" y1="110" x2="1130" y2="1515"/>
+<line x1="1365" y1="110" x2="1365" y2="1515"/>
+</g>
+<g stroke="#e2e8f0">
+<line x1="0" y1="365" x2="1600" y2="365"/>
+<line x1="0" y1="475" x2="1600" y2="475"/>
+<line x1="0" y1="645" x2="1600" y2="645"/>
+<line x1="0" y1="945" x2="1600" y2="945"/>
+<line x1="0" y1="1125" x2="1600" y2="1125"/>
+<line x1="0" y1="1235" x2="1600" y2="1235"/>
+<line x1="0" y1="1345" x2="1600" y2="1345"/>
+</g>
+
+<!-- header -->
+<rect x="190" y="110" width="1410" height="40" fill="#0f172a"/>
+<g font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">
+<text x="307" y="135">TRIGGER</text>
+<text x="542" y="135">INPUT</text>
+<text x="777" y="135">CONTEXT</text>
+<text x="1012" y="135">PROCESSING</text>
+<text x="1247" y="135">AI</text>
+<text x="1482" y="135">OUTPUT</text>
+</g>
+
+<!-- row label accent bars + names -->
+<g>
+<rect x="0" y="150" width="6" height="215" fill="#f59e0b"/>
+<rect x="0" y="365" width="6" height="110" fill="#3b82f6"/>
+<rect x="0" y="475" width="6" height="170" fill="#14b8a6"/>
+<rect x="0" y="645" width="6" height="300" fill="#3b82f6"/>
+<rect x="0" y="945" width="6" height="180" fill="#ec4899"/>
+<rect x="0" y="1125" width="6" height="110" fill="#14b8a6"/>
+<rect x="0" y="1235" width="6" height="110" fill="#14b8a6"/>
+<rect x="0" y="1345" width="6" height="170" fill="#14b8a6"/>
+</g>
+<g font-size="14" font-weight="bold" fill="#0f172a">
+<text x="16" y="172">Growth Lead</text>
+<text x="16" y="387">Run controller</text>
+<text x="16" y="497">Company's own site</text>
+<text x="16" y="667">Rules engine &amp; loop</text>
+<text x="16" y="967">LLM</text>
+<text x="16" y="1147">Hunter.io</text>
+<text x="16" y="1257">Database</text>
+<text x="16" y="1367">Email</text>
+</g>
+<g font-size="11" fill="#64748b" font-style="italic">
+<text x="16" y="188">Sprinto · the only</text>
+<text x="16" y="204">human in the loop</text>
+<text x="16" y="403">Next.js 15 on Vercel</text>
+<text x="16" y="419">one domain per request</text>
+<text x="16" y="513">robots.txt · plain GET</text>
+<text x="16" y="529">· r.jina.ai reader</text>
+<text x="16" y="683">plain TypeScript</text>
+<text x="16" y="699">no model in the verdict</text>
+<text x="16" y="983">Gemini Flash</text>
+<text x="16" y="999">gemini-3.8-flash, pinned</text>
+<text x="16" y="1015">Claude API never called</text>
+<text x="16" y="1163">Domain Search</text>
+<text x="16" y="1179">free tier, 50 credits</text>
+<text x="16" y="1273">Neon Postgres</text>
+<text x="16" y="1289">(postgres.js)</text>
+<text x="16" y="1383">Gmail API primary</text>
+<text x="16" y="1399">Resend fallback</text>
+</g>
+
+<!-- Row 1: Growth Lead -->
+<rect x="200" y="160" width="215" height="62" rx="8" fill="#fff7ed" stroke="#f59e0b"/>
+<circle cx="214" cy="174" r="10" fill="#f59e0b"/><text x="214" y="178" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">0</text>
+<text x="230" y="176" font-size="10.2" fill="#334155">Pastes up to 20 domains, or</text>
+<text x="230" y="189" font-size="10.2" fill="#334155">clicks Load sample data — 16</text>
+<text x="230" y="202" font-size="10.2" fill="#334155">seeded, failures included.</text>
+
+<rect x="670" y="160" width="215" height="75" rx="8" fill="#fff7ed" stroke="#f59e0b"/>
+<circle cx="684" cy="174" r="10" fill="#f59e0b"/><text x="684" y="178" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">30</text>
+<text x="700" y="176" font-size="10.2" fill="#334155">Moves the seven signal weight</text>
+<text x="700" y="189" font-size="10.2" fill="#334155">sliders, flips strict_icp and</text>
+<text x="700" y="202" font-size="10.2" fill="#334155">reader_enabled. No code, no</text>
+<text x="700" y="215" font-size="10.2" fill="#334155">redeploy, no re-fetch.</text>
+
+<rect x="1375" y="160" width="215" height="62" rx="8" fill="#fff7ed" stroke="#f59e0b"/>
+<circle cx="1389" cy="174" r="10" fill="#f59e0b"/><text x="1389" y="178" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">22</text>
+<text x="1405" y="176" font-size="10.2" fill="#334155">Reads the board, opens a card.</text>
+<text x="1405" y="189" font-size="10.2" fill="#334155">Every quote is one click from</text>
+<text x="1405" y="202" font-size="10.2" fill="#334155">the page it was taken from.</text>
+
+<rect x="1375" y="230" width="215" height="70" rx="8" fill="#fff7ed" stroke="#f59e0b"/>
+<circle cx="1389" cy="244" r="10" fill="#f59e0b"/><text x="1389" y="248" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">23</text>
+<text x="1405" y="246" font-size="10.2" fill="#334155">Approves &amp; sends, or rejects</text>
+<text x="1405" y="259" font-size="10.2" fill="#334155">with a reason that re-ranks</text>
+<text x="1405" y="272" font-size="10.2" fill="#334155">the next run.</text>
+<text x="1405" y="288" font-size="9.5" fill="#b45309" font-style="italic">— nothing sends on its own</text>
+
+<rect x="1375" y="308" width="215" height="48" rx="8" fill="#fff7ed" stroke="#f59e0b"/>
+<circle cx="1389" cy="322" r="10" fill="#f59e0b"/><text x="1389" y="326" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">27</text>
+<text x="1405" y="324" font-size="10.2" fill="#334155">Types the confirmation phrase</text>
+<text x="1405" y="337" font-size="10.2" fill="#334155">before R-54 blocks a domain.</text>
+
+<!-- Row 2: Run controller -->
+<rect x="200" y="375" width="215" height="80" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="214" cy="389" r="10" fill="#3b82f6"/><text x="214" y="393" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">1</text>
+<text x="230" y="391" font-size="10.2" fill="#334155">/api/run/start opens the run;</text>
+<text x="230" y="404" font-size="10.2" fill="#334155">the browser then calls /step</text>
+<text x="230" y="417" font-size="10.2" fill="#334155">once per domain. Vercel's limit</text>
+<text x="230" y="430" font-size="10.2" fill="#334155">is per request, so the loop</text>
+<text x="230" y="443" font-size="10.2" fill="#334155">lives in the client.</text>
+
+<rect x="905" y="375" width="215" height="80" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="919" cy="389" r="10" fill="#3b82f6"/><text x="919" y="393" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">2</text>
+<text x="935" y="391" font-size="10.2" fill="#334155">A row stranded by a killed</text>
+<text x="935" y="404" font-size="10.2" fill="#334155">invocation is reclaimed, not</text>
+<text x="935" y="417" font-size="10.2" fill="#334155">lost. 3 retries, then quarantine</text>
+<text x="935" y="430" font-size="10.2" fill="#334155">as handler_timeout. The run</text>
+<text x="935" y="443" font-size="10.2" fill="#334155">never reports done early.</text>
+
+<!-- Row 3: Company's own site -->
+<rect x="435" y="485" width="215" height="62" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="449" cy="499" r="10" fill="#14b8a6"/><text x="449" y="503" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">3</text>
+<text x="465" y="501" font-size="10.2" fill="#334155">robots.txt is read first.</text>
+<text x="465" y="514" font-size="10.2" fill="#334155">Disallow — or unreachable —</text>
+<text x="465" y="527" font-size="10.2" fill="#334155">quarantines before any fetch.</text>
+
+<rect x="435" y="555" width="215" height="75" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="449" cy="569" r="10" fill="#14b8a6"/><text x="449" y="573" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">4</text>
+<text x="465" y="571" font-size="10.2" fill="#334155">Fetch 0, the homepage, not</text>
+<text x="465" y="584" font-size="10.2" fill="#334155">counted against the cap. Plain</text>
+<text x="465" y="597" font-size="10.2" fill="#334155">GET, 8s. Under 200 clean words</text>
+<text x="465" y="610" font-size="10.2" fill="#334155">= a JS shell → reader → stop.</text>
+
+<rect x="670" y="485" width="215" height="101" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="684" cy="499" r="10" fill="#14b8a6"/><text x="684" y="503" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">8</text>
+<text x="700" y="501" font-size="10.2" fill="#334155">Extra fetch 1 RESERVED for</text>
+<text x="700" y="514" font-size="10.2" fill="#334155">/security · /trust · /compliance.</text>
+<text x="700" y="527" font-size="10.2" fill="#334155">Extra fetch 2 RESERVED for</text>
+<text x="700" y="540" font-size="10.2" fill="#334155">/careers · /jobs. Two of the</text>
+<text x="700" y="553" font-size="10.2" fill="#334155">four are spent by design.</text>
+<text x="700" y="570" font-size="9.5" fill="#0f766e" font-style="italic">— no security page found is</text>
+<text x="700" y="581" font-size="9.5" fill="#0f766e" font-style="italic">   itself recorded as a finding</text>
+
+<!-- Row 4: Rules engine & loop -->
+<rect x="435" y="655" width="215" height="75" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="449" cy="669" r="10" fill="#3b82f6"/><text x="449" y="673" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">5</text>
+<text x="465" y="671" font-size="10.2" fill="#334155">Clean: drop nav, footer, blocks</text>
+<text x="465" y="684" font-size="10.2" fill="#334155">under 8 words, duplicates.</text>
+<text x="465" y="697" font-size="10.2" fill="#334155">Capped at 2,000 tokens. No AI</text>
+<text x="465" y="710" font-size="10.2" fill="#334155">call ever sees raw HTML.</text>
+
+<rect x="670" y="655" width="215" height="75" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="684" cy="669" r="10" fill="#3b82f6"/><text x="684" y="673" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">7</text>
+<text x="700" y="671" font-size="10.2" fill="#334155">Code counts the empty named</text>
+<text x="700" y="684" font-size="10.2" fill="#334155">fields — the model is never</text>
+<text x="700" y="697" font-size="10.2" fill="#334155">asked "is this enough?". A field</text>
+<text x="700" y="710" font-size="10.2" fill="#334155">is filled or it isn't.</text>
+
+<rect x="670" y="738" width="215" height="75" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="684" cy="752" r="10" fill="#3b82f6"/><text x="684" y="756" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">10</text>
+<text x="700" y="754" font-size="10.2" fill="#334155">MAX_EXTRA_FETCHES = 4, set</text>
+<text x="700" y="767" font-size="10.2" fill="#334155">before any code. A clock stops</text>
+<text x="700" y="780" font-size="10.2" fill="#334155">new pages with 25s left; the</text>
+<text x="700" y="793" font-size="10.2" fill="#334155">trace logs chosen_by=deadline.</text>
+
+<rect x="670" y="821" width="215" height="75" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="684" cy="835" r="10" fill="#3b82f6"/><text x="684" y="839" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">11</text>
+<text x="700" y="837" font-size="10.2" fill="#334155">Headcount is inferred, not</text>
+<text x="700" y="850" font-size="10.2" fill="#334155">scraped: stated text → careers</text>
+<text x="700" y="863" font-size="10.2" fill="#334155">job count → Hunter metadata.</text>
+<text x="700" y="876" font-size="10.2" fill="#334155">R-02c: unknown never drops.</text>
+
+<rect x="905" y="655" width="215" height="62" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="919" cy="669" r="10" fill="#3b82f6"/><text x="919" y="673" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">12</text>
+<text x="935" y="671" font-size="10.2" fill="#334155">S-01…S-07 evaluated per page,</text>
+<text x="935" y="684" font-size="10.2" fill="#334155">as each arrives. S-01 40 · S-02</text>
+<text x="935" y="697" font-size="10.2" fill="#334155">30 · S-03 30 · S-04 25 · S-06 10.</text>
+
+<rect x="905" y="725" width="215" height="75" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="919" cy="739" r="10" fill="#3b82f6"/><text x="919" y="743" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">13</text>
+<text x="935" y="741" font-size="10.2" fill="#334155">R-23 tiers every claim: verified</text>
+<text x="935" y="754" font-size="10.2" fill="#334155">· asserted · fabricated. Only</text>
+<text x="935" y="767" font-size="10.2" fill="#334155">verified scores or counts. The</text>
+<text x="935" y="780" font-size="10.2" fill="#334155">quote must support the claim,</text>
+<text x="935" y="793" font-size="10.2" fill="#334155">not merely exist on the page.</text>
+
+<rect x="905" y="808" width="215" height="88" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="919" cy="822" r="10" fill="#3b82f6"/><text x="919" y="826" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">14</text>
+<text x="935" y="824" font-size="10.2" fill="#334155">Fit gate R-01…R-04 first, then</text>
+<text x="935" y="837" font-size="10.2" fill="#334155">the timing stack. SEND needs</text>
+<text x="935" y="850" font-size="10.2" fill="#334155">50 points from 2 independence</text>
+<text x="935" y="863" font-size="10.2" fill="#334155">groups (R-20, R-21). R-22 holds</text>
+<text x="935" y="876" font-size="10.2" fill="#334155">and names what is not stated.</text>
+<text x="935" y="890" font-size="9.5" fill="#1e40af" font-style="italic">— same input, same verdict</text>
+
+<rect x="1375" y="655" width="215" height="75" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="1389" cy="669" r="10" fill="#3b82f6"/><text x="1389" y="673" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">19</text>
+<text x="1405" y="671" font-size="10.2" fill="#334155">R-40 validates the subject.</text>
+<text x="1405" y="684" font-size="10.2" fill="#334155">The evidence validator blocks</text>
+<text x="1405" y="697" font-size="10.2" fill="#334155">any hook with no source quote</text>
+<text x="1405" y="710" font-size="10.2" fill="#334155">before it can become a draft.</text>
+
+<rect x="1375" y="738" width="215" height="88" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<circle cx="1389" cy="752" r="10" fill="#3b82f6"/><text x="1389" y="756" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">20</text>
+<text x="1405" y="754" font-size="10.2" fill="#334155">The board: Send · Hold · Drop ·</text>
+<text x="1405" y="767" font-size="10.2" fill="#334155">Quarantine. Each card carries</text>
+<text x="1405" y="780" font-size="10.2" fill="#334155">the rule that fired, the loop</text>
+<text x="1405" y="793" font-size="10.2" fill="#334155">trace, the runner-up contact</text>
+<text x="1405" y="806" font-size="10.2" fill="#334155">and "what would change it".</text>
+
+<!-- Row 5: LLM -->
+<rect x="905" y="955" width="215" height="75" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+<circle cx="919" cy="969" r="10" fill="#ec4899"/><text x="919" y="973" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">6</text>
+<text x="935" y="971" font-size="10.2" fill="#334155">AI-1 extracts cleaned prose into</text>
+<text x="935" y="984" font-size="10.2" fill="#334155">named fields, each with a quote</text>
+<text x="935" y="997" font-size="10.2" fill="#334155">and a URL. Strict JSON, Zod-</text>
+<text x="935" y="1010" font-size="10.2" fill="#334155">checked, one retry on invalid.</text>
+
+<rect x="905" y="1038" width="215" height="75" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+<circle cx="919" cy="1052" r="10" fill="#ec4899"/><text x="919" y="1056" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">9</text>
+<text x="935" y="1054" font-size="10.2" fill="#334155">AI-2 proposes extra fetches 3–4</text>
+<text x="935" y="1067" font-size="10.2" fill="#334155">against whatever is still empty.</text>
+<text x="935" y="1080" font-size="10.2" fill="#334155">Code honours it only if it is on</text>
+<text x="935" y="1093" font-size="10.2" fill="#334155">their host and not yet read.</text>
+
+<rect x="1140" y="955" width="215" height="62" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+<circle cx="1154" cy="969" r="10" fill="#ec4899"/><text x="1154" y="973" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">17</text>
+<text x="1170" y="971" font-size="10.2" fill="#334155">AI-3 names two pain points for</text>
+<text x="1170" y="984" font-size="10.2" fill="#334155">this person. Each carries a</text>
+<text x="1170" y="997" font-size="10.2" fill="#334155">quote or the words not stated.</text>
+
+<rect x="1140" y="1025" width="215" height="75" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+<circle cx="1154" cy="1039" r="10" fill="#ec4899"/><text x="1154" y="1043" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">18</text>
+<text x="1170" y="1041" font-size="10.2" fill="#334155">AI-4 drafts subject and body.</text>
+<text x="1170" y="1054" font-size="10.2" fill="#334155">The hook must name a fact</text>
+<text x="1170" y="1067" font-size="10.2" fill="#334155">about this company that is one</text>
+<text x="1170" y="1080" font-size="10.2" fill="#334155">click from its own page.</text>
+
+<rect x="1375" y="955" width="215" height="75" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+<circle cx="1389" cy="969" r="10" fill="#ec4899"/><text x="1389" y="973" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">25</text>
+<text x="1405" y="971" font-size="10.2" fill="#334155">AI-5 classifies a pasted reply</text>
+<text x="1405" y="984" font-size="10.2" fill="#334155">into one of six intents. It</text>
+<text x="1405" y="997" font-size="10.2" fill="#334155">labels the reply; it does not</text>
+<text x="1405" y="1010" font-size="10.2" fill="#334155">decide what happens next.</text>
+
+<!-- Row 6: Hunter.io -->
+<rect x="905" y="1135" width="215" height="88" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="919" cy="1149" r="10" fill="#14b8a6"/><text x="919" y="1153" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">15</text>
+<text x="935" y="1151" font-size="10.2" fill="#334155">Called only after the fit gate</text>
+<text x="935" y="1164" font-size="10.2" fill="#334155">passes. Per-domain cache first,</text>
+<text x="935" y="1177" font-size="10.2" fill="#334155">then limit=5 with a department</text>
+<text x="935" y="1190" font-size="10.2" fill="#334155">filter. Hard stop at 80% quota,</text>
+<text x="935" y="1203" font-size="10.2" fill="#334155">before the call, not after.</text>
+<text x="935" y="1217" font-size="9.5" fill="#0f766e" font-style="italic">— 429 → cache → seeded → HOLD</text>
+
+<rect x="1375" y="1135" width="215" height="75" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="1389" cy="1149" r="10" fill="#14b8a6"/><text x="1389" y="1153" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">16</text>
+<text x="1405" y="1151" font-size="10.2" fill="#334155">R-30 ladder, conditional on</text>
+<text x="1405" y="1164" font-size="10.2" fill="#334155">headcount: at 50 people there</text>
+<text x="1405" y="1177" font-size="10.2" fill="#334155">is no compliance hire, so the</text>
+<text x="1405" y="1190" font-size="10.2" fill="#334155">CTO is rung one. Runner-up is</text>
+<text x="1405" y="1203" font-size="10.2" fill="#334155">kept with its lost_reason.</text>
+
+<!-- Row 7: Database -->
+<rect x="905" y="1245" width="215" height="88" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="919" cy="1259" r="10" fill="#14b8a6"/><text x="919" y="1263" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">21</text>
+<text x="935" y="1261" font-size="10.2" fill="#334155">runs · companies · fetches ·</text>
+<text x="935" y="1274" font-size="10.2" fill="#334155">loop_trace · signals · contacts ·</text>
+<text x="935" y="1287" font-size="10.2" fill="#334155">pain_points · drafts · sends ·</text>
+<text x="935" y="1300" font-size="10.2" fill="#334155">feedback · cost_ledger ·</text>
+<text x="935" y="1313" font-size="10.2" fill="#334155">quarantine · ai_cache.</text>
+
+<rect x="1375" y="1245" width="215" height="75" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="1389" cy="1259" r="10" fill="#14b8a6"/><text x="1389" y="1263" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">28</text>
+<text x="1405" y="1261" font-size="10.2" fill="#334155">A rejection with a reason</text>
+<text x="1405" y="1274" font-size="10.2" fill="#334155">suppresses and re-ranks the</text>
+<text x="1405" y="1287" font-size="10.2" fill="#334155">next run. Re-scoring makes no</text>
+<text x="1405" y="1300" font-size="10.2" fill="#334155">fetch and no AI call, and the</text>
+<text x="1405" y="1313" font-size="10.2" fill="#334155">page says so on screen.</text>
+
+<!-- Row 8: Email -->
+<rect x="905" y="1355" width="215" height="88" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="919" cy="1369" r="10" fill="#14b8a6"/><text x="919" y="1373" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">24</text>
+<text x="935" y="1371" font-size="10.2" fill="#334155">Gmail users.messages.send with</text>
+<text x="935" y="1384" font-size="10.2" fill="#334155">base64url RFC-822. On failure,</text>
+<text x="935" y="1397" font-size="10.2" fill="#334155">Resend. Then fail loudly — the</text>
+<text x="935" y="1410" font-size="10.2" fill="#334155">draft persists, the card turns</text>
+<text x="935" y="1423" font-size="10.2" fill="#334155">red with the reason named.</text>
+<text x="935" y="1437" font-size="9.5" fill="#0f766e" font-style="italic">— every card names its transport</text>
+
+<rect x="670" y="1355" width="215" height="62" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="684" cy="1369" r="10" fill="#14b8a6"/><text x="684" y="1373" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">29</text>
+<text x="700" y="1371" font-size="10.2" fill="#334155">to: is hardcoded to one inbox</text>
+<text x="700" y="1384" font-size="10.2" fill="#334155">in code. The lock is rendered</text>
+<text x="700" y="1397" font-size="10.2" fill="#334155">beside every send button and</text>
+<text x="700" y="1410" font-size="10.2" fill="#334155">in the footer of every page.</text>
+
+<rect x="1375" y="1355" width="215" height="101" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<circle cx="1389" cy="1369" r="10" fill="#14b8a6"/><text x="1389" y="1373" text-anchor="middle" font-size="10" fill="#fff" font-weight="bold">26</text>
+<text x="1405" y="1371" font-size="10.2" fill="#334155">R-50 interested · R-51 not now,</text>
+<text x="1405" y="1384" font-size="10.2" fill="#334155">90-day snooze · R-52 wrong</text>
+<text x="1405" y="1397" font-size="10.2" fill="#334155">person, promote the runner-up ·</text>
+<text x="1405" y="1410" font-size="10.2" fill="#334155">R-53 not interested, 180 days ·</text>
+<text x="1405" y="1423" font-size="10.2" fill="#334155">R-54 unsubscribe, permanent ·</text>
+<text x="1405" y="1436" font-size="10.2" fill="#334155">R-55 unclear, no auto action.</text>
+<text x="1405" y="1450" font-size="9.5" fill="#0f766e" font-style="italic">— code decides, not the model</text>
+
+<!-- bottom callout boxes -->
+<rect x="20" y="1545" width="500" height="162" rx="8" fill="#fef2f2" stroke="#ef4444"/>
+<text x="35" y="1567" font-size="13" font-weight="bold" fill="#991b1b">The Cut — three things the system never does</text>
+<text x="35" y="1589" font-size="10.5" fill="#334155">1. Never emails a real prospect. to: is hardcoded to one</text>
+<text x="45" y="1602" font-size="10.5" fill="#334155">inbox, and the Growth Lead clicks before anything sends.</text>
+<text x="35" y="1621" font-size="10.5" fill="#334155">2. Never scores a claim whose quote does not support it.</text>
+<text x="45" y="1634" font-size="10.5" fill="#334155">R-23 drops it to asserted — it still shows, at zero.</text>
+<text x="35" y="1653" font-size="10.5" fill="#334155">3. Never guesses past the cap. Four extra fetches, then a</text>
+<text x="45" y="1666" font-size="10.5" fill="#334155">named handoff — "try harder" is not an available answer.</text>
+<text x="35" y="1690" font-size="9.8" fill="#991b1b" font-style="italic">Checks 07 and 08 of the Nine both landed in Boundary. This is</text>
+<text x="35" y="1702" font-size="9.8" fill="#991b1b" font-style="italic">where the human was put, and it is what made the build buildable.</text>
+
+<rect x="540" y="1545" width="500" height="162" rx="8" fill="#eff6ff" stroke="#3b82f6"/>
+<text x="555" y="1567" font-size="13" font-weight="bold" fill="#1e3a8a">Rules decide, AI explains</text>
+<text x="555" y="1589" font-size="10.3" fill="#334155">Gemini Flash (gemini-3.8-flash, pinned as a const — a runtime</text>
+<text x="555" y="1602" font-size="10.3" fill="#334155">guard throws if a non-Gemini id is ever resolved) reads prose</text>
+<text x="555" y="1615" font-size="10.3" fill="#334155">in five places: extract, next-page choice, pain points, draft,</text>
+<text x="555" y="1628" font-size="10.3" fill="#334155">reply intent. Every verdict, score, gate, tier, ladder rank,</text>
+<text x="555" y="1641" font-size="10.3" fill="#334155">completeness check and reply action is plain TypeScript.</text>
+<text x="555" y="1660" font-size="10.3" fill="#334155">The loop's stopping condition is the clearest case: a model</text>
+<text x="555" y="1673" font-size="10.3" fill="#334155">asked "do you know enough?" will say yes about a blank page,</text>
+<text x="555" y="1686" font-size="10.3" fill="#334155">so code counts the empty fields instead. Same input, same</text>
+<text x="555" y="1699" font-size="10.3" fill="#334155">verdict — asserted by a test, not by a claim.</text>
+
+<rect x="1060" y="1545" width="520" height="162" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+<text x="1075" y="1567" font-size="13" font-weight="bold" fill="#115e59">Running cost, measured</text>
+<text x="1075" y="1589" font-size="10.3" fill="#334155">cost_ledger holds a row per AI call. Across 5 runs: $0.2685</text>
+<text x="1075" y="1602" font-size="10.3" fill="#334155">(≈ ₹22.55) over 347 calls, of which 194 were cache hits.</text>
+<text x="1075" y="1615" font-size="10.3" fill="#334155">Hunter: 8 credits used of 50, billed per email returned.</text>
+<text x="1075" y="1628" font-size="10.3" fill="#334155">AI_COST_CEILING_USD stops a run cleanly and keeps the rows</text>
+<text x="1075" y="1641" font-size="10.3" fill="#334155">already finished. Vercel Hobby and Neon free tier are $0.</text>
+<text x="1075" y="1660" font-size="10.3" fill="#334155">Three dials, from the L4 deck: how much text is sent (the</text>
+<text x="1075" y="1673" font-size="10.3" fill="#334155">2,000-token cap), which model reads it (one cheap pinned</text>
+<text x="1075" y="1686" font-size="10.3" fill="#334155">model), and whether it is sent at all (ai_cache and the</text>
+<text x="1075" y="1699" font-size="10.3" fill="#334155">per-domain Hunter cache).</text>
+
+<text x="800" y="1745" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Live app: signal-sprinto.vercel.app  ·  Code: github.com/aayushtopiwala3-byte/signal-sprinto</text>
+</svg>

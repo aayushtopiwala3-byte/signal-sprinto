@@ -442,13 +442,22 @@ database and runs rules-only — every page is usable, every banner explains wha
 | `GOOGLE_CLIENT_ID` | **not yet set** | ⬐ |
 | `GOOGLE_CLIENT_SECRET` | **not yet set** | ⬐ |
 | `GOOGLE_REFRESH_TOKEN` | **not yet set** | No Gmail transport. |
-| `RESEND_API_KEY` | **not yet set** | ⬐ |
-| `EMAIL_FROM` | **not yet set** | No Resend fallback. |
+| `RESEND_API_KEY` | **set** | ⬐ |
+| `EMAIL_FROM` | **set** (`onboarding@resend.dev`) | Resend is the live transport. |
 | `SENDER_NAME` | no | The signature falls back to "the Growth Lead at Sprinto". |
 | `NEXT_PUBLIC_SITE_URL` | no | Absolute links may not resolve in a deployed environment. |
 
-The five marked **not yet set** are the outstanding ones. Until they exist, Approve-and-send
-takes the `dry_run` path below.
+The three marked **not yet set** are the outstanding ones, and they are Gmail's. Resend is
+configured and is the transport that actually sends: `sendEmail` walks Gmail → Resend, Gmail
+declines for a named reason, and Resend delivers. Because a transport now exists,
+`dryRunAvailable()` is false and the `dry_run` path below is **unreachable in production** — it
+is documented because one historical `dry_run` row survives in the `sends` table and because the
+path is what runs on a checkout with no credentials at all.
+
+`EMAIL_FROM` is Resend's shared `onboarding@resend.dev` sender, which carries one constraint
+worth stating: until a domain is verified at `resend.com/domains`, Resend delivers only to the
+account owner's own address. That is why `GMAIL_SEND_TO` is a real inbox rather than
+`demo@example.com`.
 
 ### `dry_run` — the transport that does not transmit
 
@@ -517,11 +526,14 @@ bought more of the same bad choices; reserving two changed the choice itself. Se
   asserted · 0 fabrications blocked this run"*, and that zero is honest rather than broken:
   every bad quote found so far was real text that failed the *support* test, not invented text.
   The fabricated path has unit coverage and has not fired on a live run.
-- **Sending is wired but unproven.** The Gmail → Resend chain, the per-transport send rows and
-  the subject-line rule R-40 are all in place and tested, but `GOOGLE_CLIENT_ID`,
-  `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` and `RESEND_API_KEY` are not set, so **no real
-  email has been sent from this deployment.** The card will report the failure rather than
-  pretend. This is the one acceptance criterion in the brief that is not demonstrated.
+- **Sending is proven, with one qualifier.** A real email left this deployment on 19 Nov 2026
+  via Resend (message id `01a1f3c5-efc9-774b-ab3b-46627c0ffc39`), and the `sends` table holds the
+  whole chain: a `gmail / failed / not configured` row immediately followed by a `resend / sent`
+  row. The same request carried `to` and `recipient` fields naming `attacker@evil.com`; both came
+  back in `ignored_body_fields` and the mail went to `GMAIL_SEND_TO`, so **T-13's recipient lock
+  is proven against a live transport** rather than skipped. The qualifier: G4 F5 asks for the
+  fallback to fire on a *dead* Gmail token, and what fired here was a fallback on an *absent*
+  one. Same branch, weaker trigger — see `VERIFICATION_LOG.md` GAP-1.
 - **The size-inference ceiling is a fact about the web, not a tuning choice.** `rocketlane.com`
   publishes no careers page at any guessable address, so its headcount stays unknown. Under
   R-02c that is disclosed on the card and named in the counterfactual — *if they turn out to be
