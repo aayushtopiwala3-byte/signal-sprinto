@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveCertStatus, certTokensIn, hasCertToken } from "@/lib/rules/certStatus";
+import {
+  resolveCertStatus,
+  certTokensIn,
+  hasCertToken,
+  SECURITY_PAGE_URL,
+} from "@/lib/rules/certStatus";
 import { detectSignals } from "@/lib/rules/signals";
 import { EMPTY_EVIDENCE_MAP, DEFAULT_WEIGHTS } from "@/lib/types";
 
@@ -60,8 +65,11 @@ describe("§1.1 — only the right page may conclude 'none'", () => {
     expect(out.note).toContain("soc 2");
   });
 
-  it("catches a certification named only in the page title", () => {
-    // The title alone carries "trust center" and "compliance". A body-only check misses it.
+  it("withholds 'none' when the page calls itself a trust centre, even with a bare body", () => {
+    // The stricter §1.1 list. Concluding "none" drives S-02's thirty points, S-03's "their
+    // first hire" and R-04's routing, so a company that maintains a dedicated trust centre —
+    // whose badges may be images the cleaner dropped — is left unknown for a human to settle.
+    // S-02 is judged on the narrower list and may still fire here; R-24 catches any disagreement.
     const out = resolveCertStatus({
       evidence: {
         ...EMPTY_EVIDENCE_MAP,
@@ -112,9 +120,36 @@ describe("§1.1 — only the right page may conclude 'none'", () => {
   });
 });
 
+describe("which page counts as the trust page", () => {
+  it("rejects marketing pages that merely have a vertical word in the path", () => {
+    // Both of these were treated as the company's own trust page on a live run.
+    // `/in/industries/security-brokerage` is an industry page about the securities brokerage
+    // sector; `/use-cases/compliance-and-auditing-for-healthcare` is a use-case page. One gave
+    // hyperverge.co an S-02 quote of "KYC for Security & Brokerage"; the other let a HIPAA
+    // mention in nected.ai's marketing copy settle their certification status.
+    expect(SECURITY_PAGE_URL.test("https://hyperverge.co/in/industries/security-brokerage")).toBe(
+      false,
+    );
+    expect(
+      SECURITY_PAGE_URL.test("https://nected.ai/use-cases/compliance-and-auditing-for-healthcare"),
+    ).toBe(false);
+  });
+
+  it("still accepts the real thing, however it is named", () => {
+    for (const url of [
+      "https://plivo.com/security",
+      "https://whatfix.com/trust",
+      "https://acme.com/trust-center",
+      "https://acme.com/security-and-compliance",
+    ]) {
+      expect(SECURITY_PAGE_URL.test(url)).toBe(true);
+    }
+  });
+});
+
 describe("certification tokens", () => {
-  it("counts the tokens a trust page uses", () => {
-    expect(certTokensIn(TRUST_TITLE)).toContain("trust center");
+  it("counts real certifications, not the page's name for itself", () => {
+    expect(certTokensIn(TRUST_TITLE)).toEqual([]);
     expect(certTokensIn("Gets SOC 1 Type 2 Certified")).toEqual(
       expect.arrayContaining(["soc 1", "certified"]),
     );
@@ -132,11 +167,33 @@ describe("§1.2 — S-02 requires a bare trust page", () => {
   ];
 
   it("does not fire when the trust page names a certification in its title", () => {
+    // A real certification in the title, which a body-only check would miss.
     const fired = detectSignals(
-      { evidence: { ...EMPTY_EVIDENCE_MAP, cert_status: null }, pages: pages(BARE_TRUST_TEXT, TRUST_TITLE) },
+      {
+        evidence: { ...EMPTY_EVIDENCE_MAP, cert_status: null },
+        pages: pages(BARE_TRUST_TEXT, "Acme Security — SOC 2 Type II certified"),
+      },
       DEFAULT_WEIGHTS,
     );
     expect(fired.find((s) => s.signal_id === "S-02")).toBeUndefined();
+  });
+
+  it("still fires on a page that only calls itself a Trust Center — that is the signal", () => {
+    // "Trust Center" is the page's name, not its content. A page titled that way which names
+    // no certification is precisely "they built a trust page and have nothing to put on it
+    // yet", so blocking S-02 on its own title would make the signal unfireable on the only
+    // companies it exists to find. On the live run, `atlan.com` and `rocketlane.com` were both
+    // blocked this way. FIX_PROMPT_V3 §1.1 lists `trust center` as a certification token; its
+    // own acceptance §6.2 says S-02 must fire on none whose trust page *names a certification*,
+    // and a page called Trust Center that names none does not.
+    const fired = detectSignals(
+      {
+        evidence: { ...EMPTY_EVIDENCE_MAP, cert_status: null },
+        pages: pages(BARE_TRUST_TEXT, TRUST_TITLE),
+      },
+      DEFAULT_WEIGHTS,
+    );
+    expect(fired.find((s) => s.signal_id === "S-02")).toBeDefined();
   });
 
   it("does not fire when the certification is in the body", () => {

@@ -1,4 +1,4 @@
-import { hasCertToken, certTokensIn } from "@/lib/rules/certTokens";
+import { hasCertToken, SECURITY_PAGE_URL } from "@/lib/rules/certTokens";
 import type {
   EvidenceMap,
   FiredSignal,
@@ -87,7 +87,6 @@ const IN_PROGRESS =
 /** Type I with no Type II claimed anywhere is itself an "in progress" statement (§2.2). */
 const TYPE_I = /\btype\s*(?:1|i)\b/i;
 const TYPE_II = /\btype\s*(?:2|ii)\b/i;
-const SECURITY_PAGE_URL = /\/(security|trust|compliance|privacy\/security)\b/i;
 const CAREERS_URL = /\/(careers|jobs|join-us|work-with-us|openings)\b/i;
 const SECURITY_ROLE =
   /\b(security engineer|security analyst|compliance (?:manager|lead|officer|analyst)|grc\b|governance,? risk|information security|infosec|ciso|head of security|security lead|trust and safety engineer)\b/i;

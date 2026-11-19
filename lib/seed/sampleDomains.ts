@@ -40,6 +40,16 @@ export const SAMPLE_DOMAINS: string[] = [
   // review as routine. Named in the log before they were fetched. They stay whatever they score.
   "zenskar.com",
   "plumhq.com",
+  // v3 §6.7 — three genuinely early-stage companies. The first live v3 run returned zero Sends,
+  // and the reason was not the rules: R-24 found that four of the twelve were already
+  // certified and saying so on their own pages, which is a migration conversation, not a cold
+  // send. The sample had almost no pre-certification company left in it. These three are Seed
+  // to Series A at 11–50 people — the stage the ICP actually describes, and the stage at which
+  // a trust page is usually still bare. Named here before they were fetched, kept whatever they
+  // score. If none of them sends either, that is the finding and the log says so.
+  "plotline.so",
+  "kula.ai",
+  "zipteams.com",
 ];
 
 export const SAMPLE_TEXT = SAMPLE_DOMAINS.join("\n");

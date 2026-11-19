@@ -827,6 +827,96 @@ so.
 
 ---
 
+## §13 · v3 — the board before and after [19 Nov 2026]
+
+Fresh live run `run_c8bcd0e6b22c45578635`. **132 fetches, 0 from cache**, all between 17:38 and
+17:40 on 19 Nov — the page cache was cleared first, so every verdict below was read off today's
+web rather than five-day-old text.
+
+### Counts
+
+| | before (`run_5106aa…`) | after (`run_c8bcd0…`) |
+|---|---|---|
+| SEND | **1** | **0** |
+| HOLD | 5 | 14 |
+| DROP | 6 | 3 |
+| scored | 12 | 17 |
+| S-02 fires on | 8 companies | **4** |
+| S-02 verified | 3 | 1 |
+| S-01 fires on | 0 | 0 |
+
+### Every verdict that changed, and the rule that changed it
+
+| domain | before | after | rule | why |
+|---|---|---|---|---|
+| **rocketlane.com** | **SEND 55** | **HOLD 40** | **R-24** | Its own newsroom: *"Gets SOC 1 Type 2 Certified, Stays SOC 2 Type 2 Compliant Two Years In A Row"*, while `cert_status` read none. The headline defect |
+| plivo.com | DROP 0 (R-23) | HOLD 0 | **R-24** | *"Plivo is SOC 2 certified. We're audited annually by an independent auditor."* |
+| zluri.com | HOLD 30 (R-20) | HOLD 0 | **R-24** | *"Zluri complies with GDPR, NIST, SOC 2 Type II, PCI-DSS, ISO/IEC 27001, and ISO 27701."* |
+| signzy.com | DROP 0 (R-23) | HOLD 0 | **R-24** | *"Signzy is ISO 27001, SOC 2 Type II, and PCI-DSS compliant."* |
+| nected.ai | DROP 0 (R-23) | HOLD 0 | R-22 | Its `cert_status` had been settled by a HIPAA mention on `/use-cases/compliance-and-auditing-for-healthcare` — a marketing page being read as a trust page |
+| whatfix.com | DROP 30 (R-02a) | DROP 0 (R-02a) | — | Same verdict, but S-02's 30 points are gone: its trust page names a certification |
+| atlan.com | HOLD 10 | HOLD 10 | R-20 | unchanged |
+| apty.io / zipy.ai | HOLD (R-04) | HOLD (R-04) | — | already certified, already migration play |
+
+**The brief found this on one company. It was true of four.** `plivo`, `signzy` and `zluri` were
+all being scored as uncertified while their own pages said, in plain first-person English, that
+they are certified. Three of them were DROPs, so the error was invisible on the board — it only
+showed up on Rocketlane because Rocketlane happened to score high enough to send.
+
+### Acceptance (§6)
+
+| # | criterion | result |
+|---|---|---|
+| 1 | rocketlane no longer reports `none` while quoting its SOC 2 announcement | **PASS** — `cert_status: null`, verdict HOLD, `rule_fired: R-24` |
+| 2 | S-02 fires on strictly fewer companies, none whose trust page names a certification | **PASS** — 8 → 4 |
+| 3 | Rocketlane's S-07 scores 0, reason naming the media-artifact test | **PASS, differently** — see below |
+| 4 | S-01 diagnosis written down, with a code fix or a sample finding | **PASS** — §12, a sample finding |
+| 5 | No draft pitches a certification the company already holds | **PASS** — checked by pattern across all 17 drafts, 0 violations |
+| 6 | One status per send card | **PASS** — §4.1 |
+| 7 | A fresh same-day live run with at least one Send | **FAIL** — see below |
+
+**On #3.** Rocketlane's S-07 no longer appears at all, rather than appearing as ASSERTED. §2.2's
+customer-language requirement rejects *"FinTech Interview with Srikrishnan Ganesan…"* at
+detection, so it never reaches R-23 to be downgraded. Both routes score 0. The media-artifact
+test itself is exercised by `tests/contradiction.test.ts`, which asserts that exact sentence
+tiers `asserted` with the reason naming a publication artifact. The letter of the criterion
+asked for a downgrade; what happened is that the quote stopped qualifying one step earlier.
+
+**On #7 — no Send survives, and this is the honest result rather than an over-correction.**
+
+The obvious fix was tried twice. Five companies were added across two rounds — `zenskar.com`,
+`plumhq.com`, then `plotline.so`, `kula.ai`, `zipteams.com` — each chosen on ICP fit, named in
+this log before being fetched, and kept whatever they scored. None sends. Three of the five have
+no trust page at all (`cert_status` null → R-22), one is already certified, one hit R-24.
+
+The reason is structural, and it is the same finding as §12 seen from the other side. A SEND
+needs 50 points across two independent groups, and the certification group — S-01 at 40 and S-02
+at 30 — is where almost all of that weight lives. Across 17 companies:
+
+- **S-01 fires on nobody.** No company states a certification is under way (§12).
+- **S-02 verifies on one.** Only `atlan.com` and `rocketlane.com` have a trust page naming no
+  certification, and Rocketlane is held by R-24 anyway.
+- **S-03 fires on nobody.** Careers pages were fetched for 15 of 17; security-role language
+  appears on three, and all three are excluded for correct reasons — `apty.io` is already
+  certified, `whatfix.com` is above 500 people, and Rocketlane's is not on a careers page.
+
+So the sample is overwhelmingly **post**-certification. Nine of seventeen companies are either
+recorded `certified` or caught by R-24 naming their own certification. That is a true fact about
+established Indian B2B SaaS companies, and it is exactly the population Sprinto has *already
+sold to* rather than the one it sells into.
+
+What would produce a Send is a company that is genuinely mid-certification and says so, or one
+with a bare trust page and an open GRC role. What would **not** be acceptable is reaching the
+same number by lowering `SEND_THRESHOLD`, re-weighting the certification group, or dropping the
+two-group independence test — each of which would have produced a Send this afternoon and would
+have meant exactly the thing `FIX_PROMPT_V3.md` §0 was written to stop.
+
+**The board went from one Send to none, and the one it lost was wrong.** Rocketlane has been SOC
+2 compliant for two years. A system whose only Send was an offer to help a certified company get
+certified was not doing better than a system that sends nothing.
+
+---
+
 ## §9 · Gaps — every one, with the fix that was tried
 
 A gap is only a gap after the obvious fix has been tried and has failed. Four were recorded at

@@ -1,5 +1,5 @@
 import type { EvidenceMap } from "@/lib/types";
-import { certTokensIn, SECURITY_PAGE_URL } from "@/lib/rules/certTokens";
+import { certNoneBlockers, SECURITY_PAGE_URL } from "@/lib/rules/certTokens";
 import { sentences } from "@/lib/rules/signals";
 
 /**
@@ -30,7 +30,13 @@ import { sentences } from "@/lib/rules/signals";
  * A null `cert_status` is a better outcome than a wrong one. R-22 already renders it well.
  */
 
-export { certTokensIn, hasCertToken, SECURITY_PAGE_URL } from "@/lib/rules/certTokens";
+export {
+  certTokensIn,
+  hasCertToken,
+  blocksCertNone,
+  certNoneBlockers,
+  SECURITY_PAGE_URL,
+} from "@/lib/rules/certTokens";
 
 export type CertPage = { url: string; text: string; title: string | null };
 
@@ -85,7 +91,7 @@ export function resolveCertStatus(args: {
   }
 
   const haystack = `${securityPage.title ?? ""}\n${securityPage.text}`;
-  const tokens = certTokensIn(haystack);
+  const tokens = certNoneBlockers(haystack);
   if (tokens.length > 0) {
     return demote(
       `cert_status was read as “none”, but their security page (${securityPage.url}) names ${tokens

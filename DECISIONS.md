@@ -837,3 +837,60 @@ navigation faster than that shows nothing at all. A skeleton that flashes on eve
 feedback, it is noise — and it was appearing on every click precisely because `force-dynamic` is
 correct and will stay. The delay is CSS, not a timer, because the file is a server component and
 deciding *not* to paint should not require hydration.
+
+### D-56 · R-24 exists because R-23 checks claims against pages, never against each other [v3 §1.3]
+R-23 asks three questions of every quote: is it real, is it about this company, is it about this
+claim. Rocketlane's `cert_status: none` and its pain point *"Gets SOC 1 Type 2 Certified, Stays
+SOC 2 Type 2 Compliant Two Years In A Row"* both passed all three. They were both true readings
+of the pages they came from. Nothing in the system compared them to each other, so the verdict
+took the half it liked and sent.
+
+R-24 forces HOLD and renders both sentences side by side. It cannot be out-scored, because a
+contradiction is not a weak signal to be outweighed — it is a reason to distrust the whole row.
+It is also the cheapest rule in the build: one token scan over quotes already in memory, and it
+would have caught the headline defect on its own without any of the other v3 work.
+
+The live run found it on **four** companies, not one. `plivo.com`, `signzy.com` and `zluri.com`
+were all scored as uncertified while their own pages said otherwise in the first person. Three
+were DROPs, so the error was invisible until Rocketlane happened to score high enough to send.
+
+### D-57 · "trust center" is page furniture, not a certification [v3 §1.1, departure from the brief]
+`FIX_PROMPT_V3.md` §1.1 lists `trust\s*center` among the certification tokens. Taken literally it
+makes the system unable to conclude anything: §1.1 permits `cert_status: none` only when the
+security page names no token, and §1.2 requires the same of S-02 — so every company with a page
+called a Trust Center stays null for ever and S-02 can never fire on the one thing it exists to
+detect, a trust page with nothing on it. On the live run that was `atlan.com` and
+`rocketlane.com`: the only two companies whose trust pages name no certification at all, both
+blocked by the words "trust center" appearing on a page about trust.
+
+The brief's own acceptance §6.2 settles it — S-02 must fire on none whose trust page *names a
+certification* — and a page called Trust Center that names none does not.
+
+Resolved with two vocabularies rather than one, because two different questions are being asked:
+
+- **"Is this trust page bare?"** (S-02, R-24) — the narrow list: real certification names and
+  claims only.
+- **"May we conclude they hold none?"** (§1.1) — narrow list *plus* the self-description. This
+  is the stronger claim, it drives S-02's thirty points and R-04's routing, and a company
+  maintaining a dedicated trust centre is engaged with the topic — its badges may be images the
+  cleaner dropped. Null, and R-22 hands it to a human.
+
+Firing a signal on the page in front of us and concluding a fact about the company are different
+acts. R-24 exists to catch the case where they disagree.
+
+### D-58 · The board lost its only Send, and the Send was wrong [v3 §6.7]
+After v3 the board reads SEND 0 · HOLD 14 · DROP 3, against SEND 1 · HOLD 5 · DROP 6 before. The
+Send it lost was `rocketlane.com`, which has been SOC 2 compliant for two years — the email
+offered to help them obtain a certification they already hold.
+
+The obvious fix for a board with no Sends was tried twice and failed honestly: five companies
+added across two rounds, each named in `VERIFICATION_LOG.md` before being fetched and kept
+whatever they scored. None sends. The cause is structural — the certification group holds 70 of
+the available points, S-01 fires on nobody in the sample and S-02 verifies on one — and it is
+the same finding as §12 from the other side: this sample is overwhelmingly *post*-certification,
+which is the population Sprinto has already sold to rather than the one it sells into.
+
+Lowering `SEND_THRESHOLD`, re-weighting the certification group or dropping the two-group
+independence test would each have produced a Send this afternoon. Each would also have been the
+precise failure `FIX_PROMPT_V3.md` §0 was written to stop. A system whose only Send was an offer
+to certify a certified company was not doing better than one that sends nothing.

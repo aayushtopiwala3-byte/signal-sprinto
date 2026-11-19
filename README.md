@@ -229,6 +229,9 @@ board; a signal at weight 0 keeps its evidence but contributes nothing.
 | R-20 | score < 20 | **DROP** — fit passed, no timing signal |
 | R-22 | 4/4 fetches spent and a required field is still `not stated` | **HOLD** — hand off rather than guess |
 | R-23 | signals fired, but none of them survived the evidence check | **DROP** — nothing here is supported |
+| `R-24` | The pages contradict each other — `cert_status` says none or unknown while a verified quote names a certification. Forces HOLD and shows both sentences side by side. Cannot be out-scored |
+| `R-41` | A certified or contradicted company never gets the first-certification pitch; the draft switches to the migration angle |
+| `R-42` | The hook must use a verified compliance-specific fact when one exists. A funding hook is the last resort and the card says so |
 
 R-22 never touches a fit-gate DROP: an evidenced rejection is not made uncertain by a gap.
 R-22 also does not gate on `size_band`: R-02c says an unknown headcount must not decide a
