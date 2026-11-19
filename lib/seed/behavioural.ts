@@ -168,12 +168,29 @@ export const BEHAVIOURAL_SET: GoldenCase[] = [
 
       const counts = await q.runOutcomeCounts(run.id);
       const pass = counts.send >= 1 && counts.drop >= 2 && counts.hold >= 1;
+
+      // The assertion is untouched. What follows only explains a failure, because a bare
+      // "expected ≥1 Send, got 0" tells a reader nothing about whether the build is broken or
+      // the sample is. v3 made this red on purpose: the board's only Send had been an offer to
+      // certify a company that has been SOC 2 compliant for two years.
+      let why = "";
+      if (!pass && counts.send === 0) {
+        const companies = await q.listCompanies(run.id);
+        const certified = companies.filter((c) => c.cert_status === "certified").length;
+        const contradicted = companies.filter((c) => c.rule_fired === "R-24").length;
+        why =
+          ` ${certified} are already certified and ${contradicted} were held by R-24 for naming a certification` +
+          " their own evidence map denied, so most of this sample is post-certification — the population Sprinto has" +
+          " already sold to, not the one it sells into. Lowering the threshold or re-weighting the certification group" +
+          " would turn this green today and would be the exact failure v3 §0 forbids. See VERIFICATION_LOG.md §13.";
+      }
+
       return check(
         pass,
         `${counts.send} Send · ${counts.hold} Hold · ${counts.drop} Drop across ${counts.scored} scored. ` +
           (pass
             ? "The board distinguishes between companies, which is the whole claim."
-            : "A board that cannot produce all three verdicts is not qualifying anything — this is the assertion that F-12 should have failed."),
+            : "A board that cannot produce all three verdicts is not qualifying anything." + why),
       );
     },
   },
