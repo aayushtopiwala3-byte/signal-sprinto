@@ -697,6 +697,65 @@ next page load.
 
 ---
 
+## §11 · The 13.5s cold start was misdiagnosed in §6.1 [19 Nov 2026]
+
+§6.1 recorded a 13.5s cold start, attributed it to "a serverless function cold start, a fresh
+Neon connection and the idempotent schema pass", and added `app/loading.tsx` so the wait was at
+least legible. The loading screen was a reasonable thing to add. The diagnosis under it was
+wrong, and it stayed wrong because a measurement was taken and then explained rather than
+explained and then tested.
+
+Two causes, both structural, neither of them "serverless is slow".
+
+**1. The function and the database were on opposite sides of the planet.**
+
+```
+x-vercel-id: bom1::iad1::zv5cx-...     function executes in iad1  — Washington DC
+DATABASE_URL  ...ap-southeast-1...     database lives in ap-southeast-1 — Singapore
+```
+
+There was no `vercel.json`, so the function defaulted to `iad1` while Neon sat in Singapore.
+Every query made a round trip of roughly 230ms before it did any work.
+
+**2. The schema was replayed, statement by statement, on every cold start.**
+
+`lib/db/client.ts` ran `for (const stmt of statements(schemaSql())) await driver.query(stmt, [])`
+— **47 statements, sequential, each awaiting its own round trip.** 47 x 230ms is about eleven
+seconds, which is most of the 13.5s and explains why the figure was so stubbornly reproducible.
+
+### The fix
+
+`vercel.json` pins the function to `sin1`, co-located with Neon. The Mumbai edge now reaches a
+Singapore function that reaches a Singapore database, instead of crossing the Pacific twice per
+query.
+
+The schema replay is kept but fingerprinted. `schema.sql` is hashed; a matching hash in a new
+`schema_version` table means every statement in it has already been applied, so the 47 round
+trips become one `SELECT`. The property the replay existed for — `ALTER TABLE ... IF NOT EXISTS`
+migrations reaching a deployed database with no migration step — is unchanged: alter one
+character of `schema.sql` and the fingerprint misses and the full replay returns.
+
+### Observed
+
+| | before | after |
+|---|---|---|
+| Serving region | `iad1` (Washington DC) | `sin1` (Singapore) |
+| Queries per cold start, schema | 47 | 2 |
+| Warm TTFB, `/health` | 0.366s | 0.225s |
+| Warm TTFB, `/replies` | 0.328s | 0.215s |
+| First request after deploy | 13.5s (§6.1) | 0.50s |
+
+`app/loading.tsx` stays, because a cold function and a suspended Neon branch are still real. It
+no longer appears on every click: it is now invisible for its first 400ms, so any navigation that
+beats that threshold shows no skeleton at all. The screen is reserved for the case it was written
+for instead of flashing on every fast page load.
+
+**What this says about the earlier entry.** §6.1 is left as written rather than quietly edited.
+It is an honest record of a measurement taken correctly and reasoned about badly, and the gap
+between those two is the point.
+
+---
+
 ## §9 · Gaps — every one, with the fix that was tried
 
 A gap is only a gap after the obvious fix has been tried and has failed. Four were recorded at

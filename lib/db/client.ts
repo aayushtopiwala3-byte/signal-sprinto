@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { env } from "@/lib/env";
@@ -52,6 +53,46 @@ function statements(sqlText: string): string[] {
 const TIMESTAMP_OIDS = [1082, 1114, 1184];
 const asIs = (v: string) => v;
 
+/**
+ * Apply the schema only when it has actually changed.
+ *
+ * `schema.sql` is 47 statements and every one of them was being replayed on every cold start,
+ * sequentially, each awaiting its own network round trip. Against a database in another region
+ * that cost roughly eleven seconds before the first server component could resolve — which is
+ * the real explanation for the 13.5s cold start recorded in `VERIFICATION_LOG.md` §6.1, where it
+ * was wrongly attributed to serverless and Neon start-up and covered with a loading screen.
+ *
+ * The replay was not pointless: it is what makes `ALTER TABLE ... IF NOT EXISTS` migrations
+ * reach a deployed database with no migration step. So the property is kept and only the cost is
+ * removed. The file is fingerprinted; a matching fingerprint already in `schema_version` means
+ * every statement in it has been applied, and 47 round trips collapse to one `SELECT`. Change a
+ * single character of `schema.sql` and the fingerprint misses, so the full replay returns on the
+ * next boot exactly as before.
+ */
+async function applySchema(driver: Driver): Promise<void> {
+  const text = schemaSql();
+  const fingerprint = crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
+
+  await driver.query(
+    `CREATE TABLE IF NOT EXISTS schema_version (
+       fingerprint TEXT PRIMARY KEY,
+       applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+     )`,
+    [],
+  );
+
+  const hit = await driver.query(`SELECT 1 FROM schema_version WHERE fingerprint = $1`, [
+    fingerprint,
+  ]);
+  if (hit.length > 0) return;
+
+  for (const stmt of statements(text)) await driver.query(stmt, []);
+  await driver.query(
+    `INSERT INTO schema_version (fingerprint) VALUES ($1) ON CONFLICT DO NOTHING`,
+    [fingerprint],
+  );
+}
+
 async function createDriver(): Promise<Driver> {
   const url = env.databaseUrl();
 
@@ -73,7 +114,7 @@ async function createDriver(): Promise<Driver> {
         await client.end({ timeout: 5 });
       },
     };
-    for (const stmt of statements(schemaSql())) await driver.query(stmt, []);
+    await applySchema(driver);
     return driver;
   }
 
@@ -88,7 +129,7 @@ async function createDriver(): Promise<Driver> {
       await pg.close();
     },
   };
-  for (const stmt of statements(schemaSql())) await driver.query(stmt, []);
+  await applySchema(driver);
   return driver;
 }
 

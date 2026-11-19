@@ -813,3 +813,27 @@ request body on purpose. Both were returned in `ignored_body_fields` and the mai
 `GMAIL_SEND_TO`. T-13 normally *skips* once a transport is configured — deliberately, so
 `/selftest` does not send mail on every page load — so this is the first and only time the
 recipient lock has been exercised against a live transport.
+
+### D-55 · Co-locate the function with the database, and stop replaying the schema [post-G6]
+The 13.5s cold start in `VERIFICATION_LOG.md` §6.1 was blamed on serverless and Neon start-up
+and covered with a loading screen. Both halves of that were wrong, and the loading screen is what
+let it stay wrong — the symptom was made legible, so nobody looked under it.
+
+The function ran in `iad1` (Washington DC) because no `vercel.json` existed to say otherwise. The
+database is in `ap-southeast-1` (Singapore). Every query crossed the Pacific: ~230ms. Meanwhile
+`createDriver` replayed all 47 statements of `schema.sql` on every cold start, sequentially,
+awaiting each one. 47 x 230ms is roughly eleven of the thirteen seconds.
+
+Pinning `sin1` fixes the geography. The schema replay is kept rather than deleted, because it is
+what lets `ALTER TABLE ... IF NOT EXISTS` migrations reach a deployed database with no migration
+step — a property worth keeping. It is made cheap instead: `schema.sql` is fingerprinted and a
+matching fingerprint in `schema_version` short-circuits the replay, so 47 round trips become two.
+Change one character of the file and the fingerprint misses and the full replay returns, so the
+cheap path can never go stale.
+
+`app/loading.tsx` survives both fixes, because a cold function and a suspended Neon branch remain
+real. What changed is when it is allowed to paint: it holds at `opacity: 0` for 400ms, so a
+navigation faster than that shows nothing at all. A skeleton that flashes on every click is not
+feedback, it is noise — and it was appearing on every click precisely because `force-dynamic` is
+correct and will stay. The delay is CSS, not a timer, because the file is a server component and
+deciding *not* to paint should not require hydration.
