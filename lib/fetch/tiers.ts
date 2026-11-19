@@ -275,6 +275,7 @@ export async function fetchPage(
         tier: number;
         links: PageLink[];
         job_links: string[];
+        title: string | null;
       } | null>;
       put: (row: {
         url: string;
@@ -283,6 +284,7 @@ export async function fetchPage(
         word_count: number;
         links: PageLink[];
         job_links: string[];
+        title: string | null;
       }) => Promise<void>;
     };
   } = {},
@@ -299,7 +301,8 @@ export async function fetchPage(
         // homepage, and a cached homepage with no links dropped it from SEND to HOLD.
         links: hit.links,
         job_links: hit.job_links,
-        title: null,
+        // §1.2 — cached too, now. Returning null here made a cached trust page look bare.
+        title: hit.title,
       };
       return {
         attempts: [
@@ -333,6 +336,7 @@ export async function fetchPage(
       word_count: core.page.words,
       links: core.page.links,
       job_links: core.page.job_links,
+      title: core.page.title,
     });
   }
 

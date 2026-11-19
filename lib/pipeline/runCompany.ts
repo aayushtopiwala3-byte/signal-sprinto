@@ -28,6 +28,13 @@ import { detectSignals, type PageRecord } from "@/lib/rules/signals";
 import { tierAllSignals, tierDraft, tierPainPoints } from "@/lib/rules/evidenceTier";
 import { checkSubject, subjectRetryNote } from "@/lib/rules/subject";
 import { computeVerdict } from "@/lib/rules/verdict";
+import { resolveCertStatus } from "@/lib/rules/certStatus";
+import { planHook } from "@/lib/rules/hook";
+import {
+  checkContradiction,
+  contradictionCounterfactual,
+  type VerifiedClaim,
+} from "@/lib/rules/contradiction";
 import type { VerdictResult } from "@/lib/types";
 import { selectContact, isGeneric, displayName } from "@/lib/rules/poc";
 import { NOT_STATED, type EvidenceMap, type LoopField, type SizeBand } from "@/lib/types";
@@ -291,6 +298,8 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
     /* ⑤ + ⑥ the loop. Plain code decides whether to go again; AI-2 only suggests where. */
     await q.setStage(companyId, "loop");
     let fetchesUsed = 0;
+    // §1.1 — which page, if any, earned the right to answer "are they certified?".
+    let securityPageUrl: string | null = null;
     let iteration = 1;
     /** §2.3 — `size_band` may drive at most one *discretionary* choice. */
     let sizeFetchesSpent = 0;
@@ -379,7 +388,8 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         // Recorded either way. "We looked and there is none" and "we never looked" are
         // different facts, and the card has to be able to tell them apart.
         if (reserved.purpose === "security") {
-          await q.saveSecurityPage(companyId, outcome?.page ? nextUrl : null);
+          securityPageUrl = outcome?.page ? nextUrl : null;
+          await q.saveSecurityPage(companyId, securityPageUrl);
         }
 
         chosenBy = "reserved";
@@ -513,6 +523,23 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
       // AI-1 answered it. That path always carries a verbatim quote, so it is `stated`.
       evidence = { ...evidence, size_source: "stated" };
       await q.saveEvidence(companyId, evidence);
+    }
+
+    // §1.1 — before anything reads `cert_status`, check that the page which set it was
+    // entitled to. "none" may only come from the reserved security page, and only when that
+    // page names no certification at all. Everything downstream depends on this field: S-02's
+    // thirty points, S-03's "their first hire", R-04's migration routing. Getting it from a
+    // privacy policy is how `rocketlane.com` became the board's only Send while quoting its own
+    // SOC 2 announcement two sections further down the same card.
+    const certCheck = resolveCertStatus({
+      evidence,
+      pages: pages.map((p) => ({ url: p.url, text: p.text, title: p.title })),
+      securityPageUrl,
+    });
+    if (certCheck.note) {
+      evidence = certCheck.evidence;
+      await q.saveEvidence(companyId, evidence);
+      await q.saveCertNote(companyId, certCheck.note);
     }
 
     // R-23 (§3.1). Detection asks "does a sentence on their site match this pattern". Tiering
@@ -697,6 +724,94 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
       })),
     );
 
+    /* R-24 (§1.3) — does the evidence agree with itself?
+     *
+     * Placed here deliberately: after pain points, because a pain point is where the
+     * contradiction surfaced on `rocketlane.com`, and before the draft, so R-41 can switch the
+     * angle rather than writing a first-certification pitch to a certified company and having
+     * it retracted afterwards.
+     *
+     * Only VERIFIED claims are considered. An asserted quote has already been judged not to
+     * support anything, and letting it force a HOLD would give a rejected sentence more power
+     * than an accepted one. */
+    const verifiedClaims: VerifiedClaim[] = [
+      ...result.fired_signals
+        .filter((sig) => sig.tier === "verified" && sig.quote)
+        .map((sig) => ({
+          kind: "signal" as const,
+          label: sig.signal_id,
+          quote: sig.quote as string,
+          url: sig.source_url ?? null,
+        })),
+      ...validatedPoints
+        .filter((pt) => pt.tier === "verified" && pt.quote)
+        .map((pt, i) => ({
+          kind: "pain_point" as const,
+          label: `pain point ${i + 1}`,
+          quote: pt.quote as string,
+          url: pt.source_url,
+        })),
+      ...(evidence.is_b2b_saas_evidence
+        ? [
+            {
+              kind: "evidence" as const,
+              label: "is_b2b_saas",
+              quote: evidence.is_b2b_saas_evidence.quote,
+              url: evidence.is_b2b_saas_evidence.url,
+            },
+          ]
+        : []),
+      ...(evidence.size_band_evidence
+        ? [
+            {
+              kind: "evidence" as const,
+              label: "size_band",
+              quote: evidence.size_band_evidence.quote,
+              url: evidence.size_band_evidence.url,
+            },
+          ]
+        : []),
+    ];
+
+    const contradiction = checkContradiction({
+      certStatus: evidence.cert_status,
+      certQuote: evidence.cert_status_evidence?.quote ?? null,
+      certUrl: evidence.cert_status_evidence?.url ?? null,
+      claims: verifiedClaims,
+    });
+
+    if (contradiction) {
+      result = {
+        ...result,
+        verdict: "HOLD",
+        rule_fired: "R-24",
+        verdict_reason: contradiction.reason,
+        what_would_change_it: contradictionCounterfactual(contradiction),
+      };
+      await q.saveContradiction(companyId, contradiction);
+      await q.saveVerdict(companyId, {
+        verdict: result.verdict,
+        timing_score: result.timing_score,
+        independent_signals: result.independent_signals,
+        play: result.play,
+        verdict_reason: result.verdict_reason,
+        rule_fired: result.rule_fired,
+        fetches_used: fetchesUsed,
+        missing_fields: missingAtEnd,
+      });
+    } else {
+      await q.saveContradiction(companyId, null);
+    }
+
+    /* R-42 (§3.2) — decide what the hook is allowed to open on, before the model is asked.
+     * Computed here rather than inside the prompt builder so the fallback note can be stored on
+     * the draft row and rendered on the card even when the model is unavailable. */
+    const hookPlan = planHook({
+      signals: result.fired_signals,
+      certEvidence: evidence.cert_status_evidence,
+      certStatus: evidence.cert_status,
+    });
+
     /* ⑩ draft, then the validator that decides whether it may ever be sent. */
     await q.setStage(companyId, "draft");
     const contactName = poc.ok ? displayName(poc.selected) : NOT_STATED;
@@ -735,6 +850,10 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
         })),
         play: result.play,
         pages: sources,
+        // R-42 (§3.2) — the hook must use a compliance-specific fact when one survived.
+        hook: hookPlan,
+        // R-41 (§3.1) — a contradicted certification position is never pitched as greenfield.
+        contradicted: contradiction !== null,
       });
 
       let draftResult = await aiCall({
@@ -789,6 +908,8 @@ export async function runCompany(companyId: string): Promise<RunCompanyResult> {
           hook_url: check.hook_url,
           validated: check.validated,
           blocked_reason: check.blocked_reason,
+          // R-42 — only meaningful on a draft that exists, so it is attached here alone.
+          hook_note: hookPlan.note,
         });
       }
     }

@@ -48,14 +48,15 @@ describe("T-02 — de-duplication after normalisation (§4.1)", () => {
     expect(batch.duplicates_removed).toBe(2);
   });
 
-  it("reduces the 16 sample entries to 14 unique domains with 2 duplicates removed", () => {
-    // Broadened from 12 to 16 in G6 §4. The duplicate trio is load-bearing and unchanged: the
-    // count that matters is that three entries still collapse to one rocketlane.com.
+  it("reduces the 18 sample entries to 16 unique domains with 2 duplicates removed", () => {
+    // 12 → 16 in G6 §4, 16 → 18 in v3 §2.3. The duplicate trio is load-bearing and unchanged
+    // through both: the count that matters is that three entries still collapse to one
+    // rocketlane.com, and `duplicates_removed` stays 2 however many companies are added.
     const batch = normalizeBatch(SAMPLE_DOMAINS);
     expect(batch.submitted).toBe(SAMPLE_DOMAINS.length);
-    expect(batch.submitted).toBe(16);
+    expect(batch.submitted).toBe(18);
     expect(batch.duplicates_removed).toBe(2);
-    expect(batch.domains).toHaveLength(14);
+    expect(batch.domains).toHaveLength(16);
     // One company means one Hunter credit for rocketlane.com.
     expect(batch.domains.filter((d) => d.domain === "rocketlane.com")).toHaveLength(1);
   });

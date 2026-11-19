@@ -53,6 +53,10 @@ export type CompanyRow = {
   attempts: number;
   security_page_checked: boolean;
   security_page_url: string | null;
+  /** R-24 (§1.3) — the serialised contradiction, null when the evidence agrees with itself. */
+  contradiction_json: string | null;
+  /** §1.1 — why cert_status was left unknown. */
+  cert_note: string | null;
 };
 
 /** §2.1 — records the outcome of reserved fetch 1, including a clean "there isn't one". */
@@ -237,6 +241,24 @@ export async function saveEvidence(companyId: string, evidence: EvidenceMap): Pr
     WHERE id = ${companyId}`;
 }
 
+/** §1.1 — why `cert_status` is null, so the card can say "we refused to conclude this". */
+export async function saveCertNote(companyId: string, note: string | null): Promise<void> {
+  await sql`UPDATE companies SET cert_note = ${note} WHERE id = ${companyId}`;
+}
+
+/**
+ * R-24 — the contradiction itself, not merely the fact of one. The card renders both
+ * conflicting quotes side by side, which a reason string cannot carry.
+ */
+export async function saveContradiction(
+  companyId: string,
+  contradiction: unknown | null,
+): Promise<void> {
+  await sql`UPDATE companies SET contradiction_json = ${
+    contradiction === null ? null : JSON.stringify(contradiction)
+  } WHERE id = ${companyId}`;
+}
+
 export async function saveVerdict(
   companyId: string,
   v: {
@@ -336,24 +358,34 @@ export const PAGE_CACHE_MAX_AGE_DAYS = 7;
  */
 export async function getCachedPage(
   url: string,
-): Promise<{ clean_text: string; tier: number; links: PageLink[]; job_links: string[] } | null> {
+): Promise<{
+  clean_text: string;
+  tier: number;
+  links: PageLink[];
+  job_links: string[];
+  title: string | null;
+} | null> {
   try {
     const rows = await sql<{
       clean_text: string;
       tier: number;
       links_json: string | null;
       job_links_json: string | null;
+      title: string | null;
+      title_cached: boolean;
     }>`
-      SELECT clean_text, tier, links_json, job_links_json FROM page_cache
+      SELECT clean_text, tier, links_json, job_links_json, title, title_cached FROM page_cache
       WHERE url = ${url}
         AND fetched_at > now() - make_interval(days => ${PAGE_CACHE_MAX_AGE_DAYS})`;
     const row = rows[0];
-    if (!row || row.links_json === null) return null;
+    // Either column missing means the row predates that half of the cache and is a miss.
+    if (!row || row.links_json === null || !row.title_cached) return null;
     return {
       clean_text: row.clean_text,
       tier: row.tier,
       links: JSON.parse(row.links_json) as PageLink[],
       job_links: JSON.parse(row.job_links_json ?? "[]") as string[],
+      title: row.title,
     };
   } catch {
     // A cache failure is a miss, never an error the pipeline has to handle.
@@ -368,18 +400,22 @@ export async function putCachedPage(input: {
   word_count: number;
   links: PageLink[];
   job_links: string[];
+  title: string | null;
 }): Promise<void> {
   try {
     await sql`
-      INSERT INTO page_cache (url, tier, clean_text, word_count, links_json, job_links_json, fetched_at)
+      INSERT INTO page_cache (url, tier, clean_text, word_count, links_json, job_links_json, title, title_cached, fetched_at)
       VALUES (${input.url}, ${input.tier}, ${input.clean_text}, ${input.word_count},
-              ${JSON.stringify(input.links)}, ${JSON.stringify(input.job_links)}, now())
+              ${JSON.stringify(input.links)}, ${JSON.stringify(input.job_links)},
+              ${input.title}, true, now())
       ON CONFLICT (url) DO UPDATE
         SET clean_text = EXCLUDED.clean_text,
             tier = EXCLUDED.tier,
             word_count = EXCLUDED.word_count,
             links_json = EXCLUDED.links_json,
             job_links_json = EXCLUDED.job_links_json,
+            title = EXCLUDED.title,
+            title_cached = true,
             fetched_at = now()`;
   } catch {
     // Caching is an optimisation.
@@ -697,6 +733,8 @@ export type DraftRow = {
   hook_url: string | null;
   validated: boolean;
   blocked_reason: string | null;
+  /** R-42 — set when the hook fell back to funding for want of anything better. */
+  hook_note: string | null;
   created_at: string;
 };
 
@@ -709,14 +747,16 @@ export async function replaceDraft(
     hook_url: string | null;
     validated: boolean;
     blocked_reason: string | null;
+    /** R-42 — set when the hook fell back to funding. */
+    hook_note?: string | null;
   },
 ): Promise<string> {
   await sql`DELETE FROM drafts WHERE company_id = ${companyId}`;
   const id = newId("dr");
   await sql`
-    INSERT INTO drafts (id, company_id, subject, body, hook_quote, hook_url, validated, blocked_reason)
+    INSERT INTO drafts (id, company_id, subject, body, hook_quote, hook_url, validated, blocked_reason, hook_note)
     VALUES (${id}, ${companyId}, ${d.subject}, ${d.body}, ${d.hook_quote}, ${d.hook_url},
-            ${d.validated}, ${d.blocked_reason})`;
+            ${d.validated}, ${d.blocked_reason}, ${d.hook_note ?? null})`;
   return id;
 }
 
@@ -796,6 +836,53 @@ export async function sendCounts(): Promise<{ sent: number; failed: number; dryR
     else failed += n;
   }
   return { sent, failed, dryRun };
+}
+
+/**
+ * §4.2 (v3) — the same three counters, but attributable.
+ *
+ * "Sent 1 · Dry-run 1 · Send failed 1" told a reader that three things happened and gave them
+ * no way to find out to whom. A number on a health page that cannot be traced to the row it
+ * came from is a claim, not evidence — which is the standard this build applies to the model
+ * and should apply to itself.
+ */
+export async function sendBreakdown(): Promise<
+  {
+    bucket: "sent" | "dry_run" | "failed";
+    company_id: string;
+    domain: string;
+    transport: string;
+    error: string | null;
+    sent_at: string;
+  }[]
+> {
+  const rows = await sql<{
+    company_id: string;
+    domain: string;
+    transport: string;
+    status: string;
+    error: string | null;
+    sent_at: string;
+  }>`
+    SELECT c.id AS company_id, c.domain, s.transport, s.status, s.error, s.sent_at
+    FROM sends s
+    JOIN drafts d ON d.id = s.draft_id
+    JOIN companies c ON c.id = d.company_id
+    ORDER BY s.sent_at DESC`;
+
+  return rows.map((r) => ({
+    bucket:
+      r.transport === "dry_run"
+        ? ("dry_run" as const)
+        : r.status === "sent"
+          ? ("sent" as const)
+          : ("failed" as const),
+    company_id: r.company_id,
+    domain: r.domain,
+    transport: r.transport,
+    error: r.error,
+    sent_at: r.sent_at,
+  }));
 }
 
 export async function sendsForRun(runId: string): Promise<(SendRow & { company_id: string })[]> {

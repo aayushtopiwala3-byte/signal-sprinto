@@ -77,6 +77,19 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           evidence: q.evidenceFromRow(company),
           security_page_checked: company.security_page_checked ?? false,
           security_page_url: company.security_page_url,
+          // R-24 (§1.3). Parsed defensively: a malformed row must not take the page down, and
+          // the panel simply does not render when there is nothing to show.
+          contradiction: (() => {
+            if (!company.contradiction_json) return null;
+            try {
+              return JSON.parse(company.contradiction_json) as NonNullable<
+                Parameters<typeof CompanyDetail>[0]["company"]["contradiction"]
+              >;
+            } catch {
+              return null;
+            }
+          })(),
+          cert_note: company.cert_note ?? null,
         }}
         whatWouldChangeIt={whatWouldChangeIt}
         signals={signals}

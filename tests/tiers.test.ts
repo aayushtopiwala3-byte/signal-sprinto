@@ -80,6 +80,7 @@ describe("a cache hit returns the page a cold fetch returned (§11)", () => {
               tier: number;
               links: { url: string; label: string }[];
               job_links: string[];
+              title: string | null;
             });
       },
       put: async (row: {
@@ -89,6 +90,7 @@ describe("a cache hit returns the page a cold fetch returned (§11)", () => {
         word_count: number;
         links: { url: string; label: string }[];
         job_links: string[];
+        title: string | null;
       }) => {
         store.set(
           row.url,
@@ -97,6 +99,7 @@ describe("a cache hit returns the page a cold fetch returned (§11)", () => {
             tier: row.tier,
             links: row.links,
             job_links: row.job_links,
+            title: row.title,
           }),
         );
       },
@@ -133,6 +136,31 @@ describe("a cache hit returns the page a cold fetch returned (§11)", () => {
       "https://nected.ai/use-cases/compliance-and-automation",
     );
     expect(cold.page?.job_links.length).toBeGreaterThan(0);
+  });
+
+  it("serves the same page title it served cold (\u00a71.2)", async () => {
+    // The same class of bug as the links one above, left in place for the title: a cache hit
+    // returned `title: null` unconditionally. S-02 asks whether a trust page names a
+    // certification *anywhere, title included*, and Rocketlane's carries two in the title alone
+    // — "Rocketlane Trust Center: Security, Compliance, and Reliability". A cached run therefore
+    // read a certified company's trust page as bare and awarded it thirty points.
+    const cache = memoryCache();
+    stubFetch(() => ({
+      status: 200,
+      body: `<html><head><title>Rocketlane Trust Center: Security, Compliance, and Reliability</title></head>
+        <body><main><p>${"We take the protection of customer data seriously across every product surface. ".repeat(20)}</p></main></body></html>`,
+    }));
+    const url = "https://rocketlane.com/trust";
+
+    const cold = await fetchPage(url, { delayMs: 0, cache });
+    const warm = await fetchPage(url, { delayMs: 0, cache });
+
+    expect(cold.cached).toBe(false);
+    expect(warm.cached).toBe(true);
+    expect(cold.page?.title).toBe(
+      "Rocketlane Trust Center: Security, Compliance, and Reliability",
+    );
+    expect(warm.page?.title).toBe(cold.page?.title);
   });
 
   it("treats a row written before link caching as a miss, so it repairs itself", async () => {

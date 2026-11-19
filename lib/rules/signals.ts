@@ -1,3 +1,4 @@
+import { hasCertToken, certTokensIn } from "@/lib/rules/certTokens";
 import type {
   EvidenceMap,
   FiredSignal,
@@ -86,8 +87,6 @@ const IN_PROGRESS =
 /** Type I with no Type II claimed anywhere is itself an "in progress" statement (§2.2). */
 const TYPE_I = /\btype\s*(?:1|i)\b/i;
 const TYPE_II = /\btype\s*(?:2|ii)\b/i;
-const CERTIFIED_BADGE =
-  /\b(we are (?:soc\s*2|iso\s*27001)|certified|attestation|compliant with|successfully completed|achieved|report is available|we hold)\b/i;
 const SECURITY_PAGE_URL = /\/(security|trust|compliance|privacy\/security)\b/i;
 const CAREERS_URL = /\/(careers|jobs|join-us|work-with-us|openings)\b/i;
 const SECURITY_ROLE =
@@ -101,6 +100,14 @@ const FUNDING =
   /\b(series\s*[a-e]\b|seed round|pre-seed|raised\s*\$?[\d.]+\s*(?:m|million|bn|billion|cr|crore)|funding round|led the round|led by [a-z]|closed (?:our|a)\s*\$)\b/i;
 const REGULATED_VERTICAL =
   /\b(healthcare|health system|patients?|clinical|ehr\b|hipaa|fintech|financial services|banks?|lending|payments?|insurance|payroll|hr tech|human resources|recruiting|benefits administration|pharma)\b/i;
+/**
+ * §2.2 — constructions that mean "this sentence is about our customers". A vertical word inside
+ * one of these is a market claim; the same word in an interview headline, a founder's biography
+ * or a blog post about an industry is not.
+ */
+const CUSTOMER_LANGUAGE =
+  /\b(customers? (?:in|across|include|are)|serving|serves|built for|designed for|trusted by|our clients?|we work with|we serve|clients? (?:in|across|include)|teams? (?:in|at)|companies (?:in|across)|used by|powering|helps? \w+ (?:teams|companies|firms|providers))\b/i;
+
 const SMALL_BANDS = new Set(["1-10", "11-50", "51-200"]);
 
 /* ------------------------------------------------------------------ detection */
@@ -148,14 +155,24 @@ export function detectSignals(input: SignalInput, weights: Weights): FiredSignal
     );
   }
 
-  // S-02 — a security or trust page exists, with no badge on it. Only meaningful when they
-  // are not already certified, otherwise the badge is simply elsewhere.
+  // S-02 — §1.2. "They built a trust page and have nothing to put on it yet": the
+  // pre-certification moment Sprinto sells into. Two preconditions, both required.
+  //
+  // It used to fire on 10 of 12 companies, which was the tell. A signal that fires on almost
+  // everything is not detecting the absence of a badge, it is detecting the existence of a
+  // page — and it was worth 30 points. Two things were wrong. The badge test ran per *sentence*
+  // and demanded a certification name and a certification verb in the same one, so a trust page
+  // could say "SOC 2" in its heading and "we are certified" in the next paragraph and satisfy
+  // neither half. And the page *title* was never read at all, which is where Rocketlane keeps
+  // both of its: "Rocketlane Trust Center: Security, Compliance, and Reliability".
+  //
+  // Now: the reserved security fetch must have succeeded, and no certification token may appear
+  // anywhere in that page — title included. The question "is this page bare?" is asked of the
+  // whole page, because that is the question.
   if (evidence.cert_status !== "certified") {
     for (const securityPage of securityPages) {
-      const hasBadge = sentences(securityPage.text).some(
-        (s) => CERT_NAME.test(s) && CERTIFIED_BADGE.test(s),
-      );
-      if (hasBadge) continue;
+      const haystack = `${securityPage.title ?? ""}\n${securityPage.text}`;
+      if (hasCertToken(haystack)) continue;
       const hit =
         find([securityPage], { any: [/\bsecurity\b/i, /\btrust\b/i, /\bcompliance\b/i] }) ??
         (sentences(securityPage.text)[0]
@@ -192,8 +209,21 @@ export function detectSignals(input: SignalInput, weights: Weights): FiredSignal
   // S-06 — a recent funding round.
   push("S-06", find(pages, { all: [FUNDING] }));
 
-  // S-07 — sells into a regulated vertical.
-  push("S-07", find(pages, { all: [REGULATED_VERTICAL] }));
+  // S-07 — §2.2. A regulated-vertical claim must rest on a sentence about *who they sell to*,
+  // not on a sentence that merely contains a vertical word.
+  //
+  // The quote this replaces was "FinTech Interview with Srikrishnan Ganesan, Co-Founder and CEO
+  // of Rocketlane" — a third party's interview headline. It names the company, it contains
+  // "FinTech", and Rocketlane sells professional-services automation to nobody in finance. R-23
+  // waved it through because all three of its tests passed, which is exactly the failure mode
+  // R-23 was built to stop, surviving inside R-23 itself.
+  //
+  // Requiring a customer-facing construction in the same sentence as the vertical token is a
+  // narrower test than "is this really about their market", and deliberately so: a named
+  // customer in that vertical would also qualify under §2.2 but cannot be recognised without a
+  // customer list to check against, so that half is not implemented and S-07 under-fires rather
+  // than guessing. Under-firing is the safe direction for a signal worth 15 points.
+  push("S-07", find(pages, { all: [REGULATED_VERTICAL, CUSTOMER_LANGUAGE] }));
 
   // Stable order, so two runs over identical input produce byte-identical rows (T-14).
   return fired.sort((a, b) => a.signal_id.localeCompare(b.signal_id));

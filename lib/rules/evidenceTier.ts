@@ -138,6 +138,61 @@ export const SIGNAL_TRIGGERS: Record<SignalId, RegExp> = {
   "S-07": /\b(healthcare|health|patients?|clinical|ehr|hipaa|fintech|financial|bank|lending|payments?|insurance|payroll|hr tech|human resources|recruiting|benefits|pharma|government|regulated)\b/i,
 };
 
+/* --------------------------------------------------------------- media artifacts */
+
+/**
+ * §2.1 — R-23's fourth test: the quote's subject must be the claim's subject.
+ *
+ * The first three tests ask whether the sentence is real, about this company, and on topic.
+ * Rocketlane's S-07 passed all three on this:
+ *
+ *   "FinTech Interview with Srikrishnan Ganesan, Co-Founder and CEO of Rocketlane"
+ *
+ * A third party's interview headline. It is verbatim, it names Rocketlane, and it contains
+ * "FinTech" — so the trigger matched and R-23 called it VERIFIED. Rocketlane sells
+ * professional-services automation and sells into no regulated vertical at all. This is the
+ * exact class of error R-23 exists to stop, surviving inside R-23, on the board's only Send.
+ *
+ * The pattern is about the *form* of the sentence rather than its topic. A publication artifact
+ * — an interview, a podcast title, an award listing, a "top 50" — describes an appearance the
+ * company made, not a fact about how it operates. No amount of topical overlap makes a headline
+ * into evidence.
+ */
+const MEDIA_ARTIFACT =
+  /\b(interview|podcast|webinar|episode|ama|fireside|panel|keynote|featured in|as seen in|in conversation|guest post|magazine|awards?|top \d+|best \d+|listicle|\d{4} report by)\b/i;
+
+/**
+ * The one exception. A funding round is *announced* — press coverage is the primary record of
+ * it, so refusing press for S-06 would refuse the only evidence that kind of fact ever has.
+ * Narrow: the company must be the grammatical subject of the funding verb, so "Rocketlane Raises
+ * $60 Million in Series C" survives while "Top 10 SaaS Companies To Watch, featuring Rocketlane"
+ * does not.
+ */
+const FUNDING_SUBJECT =
+  /\b(raises?|raised|closes?|closed|secures?|secured|announces?|announced|lands?|landed)\b/i;
+const FUNDING_OBJECT = /\b(series\s*[a-e]|seed|round|\$\s*[\d.]+|funding)\b/i;
+
+export function isMediaArtifact(quote: string): boolean {
+  return MEDIA_ARTIFACT.test(quote);
+}
+
+/**
+ * Is the company the subject of a funding verb in this sentence? Checked by position: the
+ * company's name must appear before the verb, and a funding object after it.
+ */
+export function companyRaisedFunding(quote: string, domain: string): boolean {
+  const stem = domainStem(domain);
+  if (stem.length < 3) return false;
+  const nameAt = quote.toLowerCase().indexOf(stem);
+  if (nameAt < 0) return false;
+
+  const verb = FUNDING_SUBJECT.exec(quote);
+  if (!verb || typeof verb.index !== "number") return false;
+  if (verb.index < nameAt) return false;
+
+  return FUNDING_OBJECT.test(quote.slice(verb.index));
+}
+
 /* --------------------------------------------------------------- the tier itself */
 
 /** Does the quote appear verbatim on any page we fetched? */
@@ -205,13 +260,32 @@ export function tierForSignal(args: {
   sources: Source[];
   domain: string;
 }): TierVerdict {
-  return tierFor({
+  const base = tierFor({
     quote: args.quote,
     claimedUrl: args.claimedUrl,
     sources: args.sources,
     domain: args.domain,
     trigger: SIGNAL_TRIGGERS[args.signal_id],
   });
+
+  // §2.1 — the fourth test. Applied only to a quote that already passed the first three, so the
+  // reason the card shows is the most specific one that applies rather than the first to fire.
+  if (base.tier !== "verified" || !args.quote) return base;
+
+  if (isMediaArtifact(args.quote)) {
+    if (args.signal_id === "S-06" && companyRaisedFunding(args.quote, args.domain)) {
+      return base;
+    }
+    return {
+      tier: "asserted",
+      reason:
+        "the quote is a publication artifact — an interview, award or listing headline. It records an " +
+        "appearance the company made, not a fact about how it operates, so it cannot support this claim",
+      url: base.url,
+    };
+  }
+
+  return base;
 }
 
 /* --------------------------------------------------------------- pain points & drafts */

@@ -58,6 +58,16 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS size_source TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS security_page_checked BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS security_page_url TEXT;
 
+-- R-24 (§1.3). The contradiction itself, not just the fact that one was found: the card renders
+-- the two conflicting quotes side by side, and a reason string alone cannot do that. Stored as
+-- JSON on the company because it is a property of this run's evidence, not a separate entity
+-- with a life of its own.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS contradiction_json TEXT;
+
+-- §1.1. Why cert_status is null when it is, so the card can say "we refused to conclude this"
+-- rather than showing an unexplained blank where a verdict-critical field should be.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS cert_note TEXT;
+
 CREATE INDEX IF NOT EXISTS companies_run_idx ON companies (run_id);
 CREATE UNIQUE INDEX IF NOT EXISTS companies_run_domain_idx
   ON companies (run_id, normalized_domain);
@@ -165,6 +175,11 @@ CREATE TABLE IF NOT EXISTS drafts (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS drafts_company_idx ON drafts (company_id);
+
+-- R-42 (§3.2). When no compliance-specific fact survived the evidence check the hook falls back
+-- to a funding round, and the card has to say so. A weak hook that explains itself is honest;
+-- a weak hook that does not is just a weak hook.
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS hook_note TEXT;
 
 -- R-23's ledger (§3.2). Every claim that failed the evidence check, across all three kinds of
 -- claim, written in one place so the Health counter is a single query rather than a union of
@@ -275,6 +290,18 @@ CREATE TABLE IF NOT EXISTS page_cache (
 -- instead of serving a lossy hit for the rest of the TTL.
 ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS links_json TEXT;
 ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS job_links_json TEXT;
+
+-- §1.2 needs the page `<title>`, and a cache hit was returning `title: null` unconditionally —
+-- the same bug the links comment above describes, left in place for the title. Rocketlane's
+-- trust page carries two certification tokens in its title alone ("Rocketlane Trust Center:
+-- Security, Compliance, and Reliability"), so a cached run read that page as bare and fired
+-- S-02's thirty points on a company that is certified.
+--
+-- `title` cannot use NULL as the "not cached yet" sentinel, because a null title is a real
+-- answer: markdown pages have none. Hence the explicit flag — false means the row predates
+-- title caching and is treated as a miss, so it refetches and repairs itself.
+ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE page_cache ADD COLUMN IF NOT EXISTS title_cached BOOLEAN NOT NULL DEFAULT false;
 
 -- §6.3 — every reply that was pasted in, classified and acted on.
 --

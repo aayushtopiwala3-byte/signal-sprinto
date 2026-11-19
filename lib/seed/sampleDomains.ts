@@ -32,6 +32,14 @@ export const SAMPLE_DOMAINS: string[] = [
   "signzy.com",
   "everstage.com",
   "hyperverge.co",
+  // v3 §2.3 — two more, added to test S-01 specifically. Across the previous 12 companies S-01
+  // never fired, and the diagnosis (VERIFICATION_LOG.md §12) found the cause in the sample
+  // rather than the code: nobody in it publicly states that a certification is under way. These
+  // two were chosen for the highest prior probability of being mid-audit and *saying so* — a
+  // billing system and an employee-health platform, both selling into buyers who run security
+  // review as routine. Named in the log before they were fetched. They stay whatever they score.
+  "zenskar.com",
+  "plumhq.com",
 ];
 
 export const SAMPLE_TEXT = SAMPLE_DOMAINS.join("\n");
@@ -44,4 +52,5 @@ export const SAMPLE_NOTES = [
   // robots.txt answers 403, so the gate stopped it before any page was read. zerodha.com was
   // swapped in only after checking that its robots.txt and homepage both return content.
   "zerodha.com is a stock brokerage, not B2B SaaS — DROP on R-01",
+  "zenskar.com and plumhq.com were added to test S-01 — chosen before fetching, kept either way",
 ];

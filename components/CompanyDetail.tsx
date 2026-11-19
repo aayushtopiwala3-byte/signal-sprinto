@@ -49,6 +49,17 @@ type CompanyView = {
   /** §2.1 — reserved fetch 1's answer, including when the answer is "they do not have one". */
   security_page_checked: boolean;
   security_page_url: string | null;
+  /** R-24 (§1.3) — the two quotes that disagree, when they do. */
+  contradiction: {
+    tokens: string[];
+    claim: { kind: string; label: string; quote: string; url: string | null };
+    cert_status: string;
+    cert_quote: string | null;
+    cert_url: string | null;
+    reason: string;
+  } | null;
+  /** §1.1 — why cert_status is null, when we refused to conclude it. */
+  cert_note: string | null;
 };
 
 type FetchView = {
@@ -174,6 +185,68 @@ function VerdictSection({
         <p className="text-sm leading-relaxed text-ink-100">
           {company.verdict_reason ?? "This company has not been scored yet."}
         </p>
+
+        {/* R-24 (§1.3) — the two sentences, next to each other.
+            A reason string can say the pages disagree. Only showing both can let a reader settle
+            it, which is the entire point of holding instead of sending. */}
+        {company.contradiction ? (
+          <div className="rounded-md border border-hold/50 bg-hold/5 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="hold">R-24</Badge>
+              <span className="text-[11px] font-semibold text-hold">
+                The pages disagree with each other
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-300">
+              Both quotes below passed the evidence check. R-23 checks each claim against the page
+              it came from; nothing checked the claims against each other, so this company could
+              be uncertified enough to score and certified enough to quote its own announcement.
+              Until a human settles it, it holds.
+            </p>
+
+            <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+              <div className="rounded border border-ink-700 bg-ink-900 px-2.5 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">
+                  evidence map says {company.contradiction.cert_status}
+                </p>
+                <p className="mt-1 border-l-2 border-ink-700 pl-2 text-[11px] italic leading-snug text-ink-300">
+                  {company.contradiction.cert_quote
+                    ? `“${company.contradiction.cert_quote}”`
+                    : "No quote — the field was left unknown."}
+                </p>
+                {company.contradiction.cert_url ? (
+                  <p className="mt-1 break-all font-mono text-[10px] text-ink-500">
+                    {company.contradiction.cert_url}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="rounded border border-hold/40 bg-hold/5 px-2.5 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-hold">
+                  but {company.contradiction.claim.label} names{" "}
+                  {company.contradiction.tokens.join(", ")}
+                </p>
+                <p className="mt-1 border-l-2 border-hold/40 pl-2 text-[11px] italic leading-snug text-ink-200">
+                  “{company.contradiction.claim.quote}”
+                </p>
+                {company.contradiction.claim.url ? (
+                  <p className="mt-1 break-all font-mono text-[10px] text-ink-500">
+                    {company.contradiction.claim.url}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* §1.1 — a null cert_status that was refused on purpose explains itself, so a blank
+            field is never mistaken for a field nobody looked at. */}
+        {company.cert_note && !company.contradiction ? (
+          <p className="rounded-md border border-ink-700 bg-ink-850 px-3 py-2 text-[11px] leading-snug text-ink-300">
+            <span className="font-semibold text-ink-100">Certification status left unknown. </span>
+            {company.cert_note}
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-400">
           <span>
@@ -854,8 +927,27 @@ function DraftSection({
   const [dryRun, setDryRun] = useState<{ to: string; from: string; rfc822: string } | null>(null);
   const sent = sends.find((s) => s.status === "sent") ?? null;
   const alreadySent = sent !== null;
+
+  // §4.1 (v3) — one card, one current status.
+  //
+  // The card used to render the dry-run block and the sent block from independent conditions,
+  // so a draft that was dry-run before credentials existed and really sent afterwards displayed
+  // "DRY RUN — Not sent" directly above "SENT — sent via: resend". Both were true at different
+  // times and the card showed them as though both were true now.
+  //
+  // `sends` is not ordered by time alone, because one send writes one row per transport
+  // *attempted* and they share a timestamp to the second. So the current status is chosen
+  // semantically: once anything was really sent, that is the status, and every other row —
+  // the Gmail attempt that declined, the dry run from last week — is history.
+  const ordered = [...sends].sort(
+    (a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime(),
+  );
+  const currentSend = sent ?? ordered[0] ?? null;
+  const history = ordered.filter((s) => s.id !== currentSend?.id);
   const failedSends = sends.filter((s) => s.status !== "sent" && s.transport !== "dry_run");
-  const dryRunRow = sends.find((s) => s.transport === "dry_run") ?? null;
+  // A dry run is current only when it is the live result of the button just pressed, or when it
+  // is the newest thing that happened to this draft.
+  const showDryRun = dryRun !== null || currentSend?.transport === "dry_run";
 
   if (!draft) {
     return (
@@ -992,16 +1084,28 @@ function DraftSection({
           >
             {draft.hook_quote ? `“${draft.hook_quote}”` : <NotStated />}
           </p>
+
+          {/* R-42 (§3.2) — a funding hook is allowed only when nothing better survived, and
+              then it has to admit it. A weak hook that explains itself is honest; a weak hook
+              that stays quiet is just a weak hook. */}
+          {draft.hook_note ? (
+            <p className="mt-2 rounded border border-hold/40 bg-hold/5 px-2 py-1.5 text-[11px] leading-snug text-ink-300">
+              <span className="font-semibold text-hold">R-42 · </span>
+              {draft.hook_note}
+            </p>
+          ) : null}
         </div>
 
         {error ? <p className="text-xs text-drop">{error}</p> : null}
         {note ? <p className="text-xs text-send">{note}</p> : null}
 
+        {/* §4.1 — exactly one of these three renders. Prior attempts go to the history row. */}
+
         {/* §3 (G6) — the dry run. The word "sent" does not appear here in any tense: the
             message was not transmitted, and the only honest thing to show is the exact bytes
             that would have been, so a judge can read the real message rather than a claim
             about it. */}
-        {dryRun || dryRunRow ? (
+        {showDryRun ? (
           <div className="rounded-md border border-dashed border-hold/50 bg-hold/5 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="hold">dry run</Badge>
@@ -1029,39 +1133,72 @@ function DraftSection({
               </p>
             )}
           </div>
-        ) : null}
-
-        {/* §4.2 — the transport is part of the record, not a detail of the moment it was sent.
-            Gmail is the primary path; Resend only ever runs because Gmail did not, so when it
-            is the one that carried the email the card says why. */}
-        {sent ? (
+        ) : currentSend && currentSend.status === "sent" ? (
+          /* §4.2 — the transport is part of the record, not a detail of the moment it was sent.
+             Gmail is the primary path; Resend only ever runs because Gmail did not, so when it
+             is the one that carried the email the card says why. */
           <div className="rounded-md border border-send/40 bg-send/10 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="send">sent</Badge>
               <span className="font-mono text-[11px] text-ink-100">
-                sent via: {sent.transport}
+                sent via: {currentSend.transport}
                 {failedSends.length > 0
                   ? ` (${failedSends[0].transport}: ${failedSends[0].error ?? "no reason recorded"})`
                   : ""}
               </span>
             </div>
             <p className="mt-1 text-[11px] leading-snug text-ink-300">
-              To <span className="font-mono">{sent.to_address}</span> at{" "}
-              {new Date(sent.sent_at).toISOString()}.
+              To <span className="font-mono">{currentSend.to_address}</span> at{" "}
+              {new Date(currentSend.sent_at).toISOString()}.
             </p>
           </div>
-        ) : failedSends.length > 0 ? (
+        ) : currentSend ? (
           <div className="rounded-md border border-drop/40 bg-drop/10 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="drop">send failed</Badge>
               <span className="font-mono text-[11px] text-ink-100">
-                attempted via: {failedSends[0].transport}
+                attempted via: {currentSend.transport}
               </span>
             </div>
             <p className="mt-1 text-[11px] leading-snug text-ink-300">
-              {failedSends[0].error ?? "No reason was recorded."}
+              {currentSend.error ?? "No reason was recorded."}
             </p>
           </div>
+        ) : null}
+
+        {/* Everything that happened before the current status. Collapsed, because it is the
+            audit trail rather than the answer — but kept, because "sent via resend" is only
+            meaningful next to the Gmail attempt that explains why resend ran at all. */}
+        {history.length > 0 ? (
+          <details className="group rounded-md border border-ink-700 bg-ink-850">
+            <summary className="cursor-pointer select-none px-3 py-2 text-[11px] text-ink-300 marker:text-ink-500">
+              Send history — {history.length} earlier attempt{history.length === 1 ? "" : "s"}
+            </summary>
+            <div className="space-y-1.5 border-t border-ink-700 px-3 py-2">
+              {history.map((h) => (
+                <div key={h.id} className="flex flex-wrap items-baseline gap-2 text-[11px]">
+                  <span className="font-mono text-ink-400">
+                    {new Date(h.sent_at).toISOString().slice(0, 19).replace("T", " ")}
+                  </span>
+                  <span className="font-mono text-ink-100">{h.transport}</span>
+                  <span
+                    className={
+                      h.status === "sent"
+                        ? "text-send"
+                        : h.status === "not_sent"
+                          ? "text-hold"
+                          : "text-drop"
+                    }
+                  >
+                    {h.status}
+                  </span>
+                  {h.error ? (
+                    <span className="text-ink-400">— {h.error}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </details>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">

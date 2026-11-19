@@ -756,6 +756,77 @@ between those two is the point.
 
 ---
 
+## §12 · v3 — the S-01 diagnosis, written before anything was changed [19 Nov 2026]
+
+`FIX_PROMPT_V3.md` §2.3 asks why S-01 — 40 points, the largest single weight, the signal the
+whole ICP argument rests on — has never fired across 12 scored companies, and requires the
+diagnosis to be written down before the cause is touched. Here it is.
+
+**Method.** For each company in the latest run (`run_5106aa7bfecc4154b19f`), read every page
+actually fetched (`fetches.clean_text`, which is the same text the detector saw) and ask three
+questions separately, so that "no certification language" and "no in-progress language" cannot
+hide behind each other.
+
+| domain | security page read | cert term anywhere | in-progress term anywhere | both in one sentence |
+|---|---|---|---|---|
+| apty.io | `/security` | yes | **no** | no |
+| atlan.com | `/security` | no | **no** | no |
+| hyperverge.co | `/in/industries/security-brokerage` | no | **no** | no |
+| nected.ai | `/use-cases/compliance-and-auditing-for-healthcare` | yes | yes | **no** |
+| plivo.com | `/security` | yes | **no** | no |
+| rocketlane.com | `/trust` | yes | **no** | no |
+| signzy.com | — none fetched — | yes | **no** | no |
+| springworks.in | `/security` | no | yes | **no** |
+| whatfix.com | `/trust` | no | **no** | no |
+| zerodha.com | `/trust` | no | **no** | no |
+| zipy.ai | — none fetched — | yes | **no** | no |
+| zluri.com | `/security` | yes | **no** | no |
+
+**Finding: this is a fact about the sample, not a defect in the code.**
+
+Ten of the twelve use no in-progress construction anywhere on any page fetched. The two that do
+are not talking about certification:
+
+```
+nected.ai       "We ask for features, and they promptly prepone them on their roadmap—ensuring
+                 continuous improvements that align with SideCarHealth's evolving needs"
+                 → a customer testimonial about the product roadmap
+
+springworks.in  "* Description Twitter sets this cookie to integrate and share features for
+                 social media and also store information about how the user uses the website"
+                 → a cookie-banner description, matched twice
+```
+
+So S-01 is behaving correctly. **No company in this sample publicly states that a certification
+is under way**, which is exactly the condition S-01 exists to detect. Widening the pattern until
+it fired would not have found a mid-certification company; it would have manufactured one out of
+a roadmap testimonial and a cookie banner — the precise failure R-23 was built to stop, committed
+by the detector instead of the model.
+
+The sample skews this way for a structural reason worth stating: a company mid-audit is in that
+state for a few months, while a certified company advertises it permanently and an uncertified
+one says nothing. S-01 detects a narrow window, so a 12-company sample finding nobody in it is
+the expected outcome, not a surprising one.
+
+**What was changed as a result: nothing in the detector.** §2.3 permits either a code fix or a
+sample finding. This is a sample finding, and the brief's own instruction is to say so.
+
+### Two companies added to test S-01, chosen and recorded before fetching
+
+Per `G6_PROMPT.md` §4 the names and the reasons go down first, so the sample cannot be chosen to
+flatter the result.
+
+| domain | why it fits the ICP | why S-01 might fire |
+|---|---|---|
+| **zenskar.com** | B2B billing and revenue-recognition SaaS, Seed–Series A, 11–50 — squarely the 11–200 cloud-native band, and 44% of Sprinto's detected customers are 11–50 | A billing system touches revenue data for US SaaS finance teams. SOC 2 is a procurement gate for that category, so a company at this stage is either mid-audit or about to be, and usually says so on a trust page to unblock deals |
+| **plumhq.com** | Employee health-insurance SaaS, Series A, 51–200, selling to Indian enterprises | Handles health and HR data, which puts ISO 27001 and SOC 2 pressure on it directly, and sells into enterprise HR where security review is routine. A regulated-vertical buyer forces the certification conversation early |
+
+**Both stay in the set whatever they turn out to be.** If neither is mid-certification, S-01 still
+has not fired, and that strengthens the finding above rather than weakening it — the log will say
+so.
+
+---
+
 ## §9 · Gaps — every one, with the fix that was tried
 
 A gap is only a gap after the obvious fix has been tried and has failed. Four were recorded at

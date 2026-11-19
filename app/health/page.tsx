@@ -32,13 +32,14 @@ const KIND_LABEL: Record<string, string> = {
 /** §9's health page: model id, Hunter quota, cost in ₹ and USD, cache-hit rate, staleness. */
 export default async function HealthPage() {
   const run = await q.latestRun();
-  const [quota, cost, ledger, pages, blocks, sendTally, outcomes] = await Promise.all([
+  const [quota, cost, ledger, pages, blocks, sendTally, sendRows, outcomes] = await Promise.all([
     fetchQuota(),
     run ? q.costSummary(run.id) : Promise.resolve(null),
     run ? q.costLedger(run.id) : Promise.resolve([]),
     run ? q.cacheCounts(run.id) : Promise.resolve({ cached: 0, live: 0 }),
     run ? q.evidenceBlocks(run.id) : Promise.resolve([]),
     q.sendCounts(),
+    q.sendBreakdown(),
     run
       ? q.runOutcomeCounts(run.id)
       : Promise.resolve({ scored: 0, send: 0, hold: 0, drop: 0, quarantined: 0, elapsedMs: null }),
@@ -104,8 +105,11 @@ export default async function HealthPage() {
               transmission that did not happen; folding them into `failed` would report a
               breakage when nothing broke. */}
           <Row label="Sent" value={String(sendTally.sent)} mono />
+          <SendAttribution rows={sendRows} bucket="sent" />
           <Row label="Dry-run (not transmitted)" value={String(sendTally.dryRun)} mono />
+          <SendAttribution rows={sendRows} bucket="dry_run" />
           <Row label="Send failed" value={String(sendTally.failed)} mono />
+          <SendAttribution rows={sendRows} bucket="failed" />
           <Row
             label="Transport chain"
             value={
@@ -368,6 +372,53 @@ function Row({ label, value, mono }: { label: string; value: string | null; mono
       <span className={cn("text-right text-ink-100", mono && "font-mono text-[11px]")}>
         {value ?? <NotStated />}
       </span>
+    </div>
+  );
+}
+
+/**
+ * §4.2 (v3) — who each counter is about.
+ *
+ * Rendered directly beneath its count so the two cannot drift apart, and linked to the company
+ * card so a reader can go and look rather than take the number on trust. Nothing is shown when
+ * a bucket is empty: a row reading "Send failed 0" needs no drill-down, and an empty disclosure
+ * is just furniture.
+ */
+function SendAttribution({
+  rows,
+  bucket,
+}: {
+  rows: {
+    bucket: "sent" | "dry_run" | "failed";
+    company_id: string;
+    domain: string;
+    transport: string;
+    error: string | null;
+    sent_at: string;
+  }[];
+  bucket: "sent" | "dry_run" | "failed";
+}) {
+  const mine = rows.filter((r) => r.bucket === bucket);
+  if (mine.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 pb-1 pl-3 text-[11px] text-ink-400">
+      {mine.map((r, i) => (
+        <span key={`${r.company_id}-${r.sent_at}-${i}`} className="flex items-baseline gap-1">
+          <Link
+            href={`/company/${r.company_id}`}
+            className="font-mono text-ink-200 underline decoration-ink-600 underline-offset-2 hover:text-ink-100"
+          >
+            {r.domain}
+          </Link>
+          <span className="text-ink-500">via {r.transport}</span>
+          {r.error ? (
+            <span className="text-ink-500" title={r.error}>
+              — {r.error.length > 44 ? `${r.error.slice(0, 44)}…` : r.error}
+            </span>
+          ) : null}
+        </span>
+      ))}
     </div>
   );
 }
